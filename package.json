@@ -46,7 +46,7 @@
     "mocha": "^10.2.0",
     "nyc": "^15.1.0",
     "prettier": "^2.8.4",
-    "ts-node": "^10.9.2",
+    "tsx": "^4.22.4",
     "typedoc": "^0.25.13",
     "typescript": "^5.4.5"
   },
@@ -56,7 +56,7 @@
     "build:ts": "tsc -p tsconfig.json && tsc -p tsconfig.commonjs.json",
     "test": "pnpm run \"/^test:.*/\"",
     "test:lint": "eslint --ext .ts,.js .",
-    "test:unit": "TS_NODE_PROJECT='./tsconfig.dev.json' mocha",
+    "test:unit": "mocha",
     "test:format": "prettier --check .",
     "coverage": "pnpm run \"/^coverage:.*/\"",
     "coverage:run": "nyc pnpm run test:unit",

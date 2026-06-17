@@ -12,13 +12,13 @@ export type BaseTypeToModel = {
 
 export type ValueType<
   TypeToModel extends BaseTypeToModel,
-  K extends keyof TypeToModel,
+  K extends keyof TypeToModel
 > = TypeToModel[K] extends DefModel<infer V, any, any> ? V : never;
 
 export interface ValueStore<TypeToModel extends BaseTypeToModel> {
   get<K extends keyof TypeToModel>(
     type: K,
-    id: string,
+    id: string
   ): ValueType<TypeToModel, K> | null;
 
   set<K extends keyof TypeToModel>(value: ValueType<TypeToModel, K>): void;
