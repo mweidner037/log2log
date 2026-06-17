@@ -2,10 +2,8 @@
   "compilerOptions": {
     "rootDir": "src",
     "outDir": "build/esm",
-    "target": "es2021",
-    "module": "es2015",
-    /* Needed with module: es2015 or else stuff breaks. */
-    "moduleResolution": "node",
+    "target": "es2022",
+    "module": "es2022",
     /* Enable strict type checking. */
     "strict": true,
     /* Enable interop with dependencies using different module systems. */
