@@ -51,18 +51,18 @@
     "typescript": "^5.4.5"
   },
   "scripts": {
-    "prepack": "pnpm run clean && pnpm run build && pnpm run test",
-    "build": "pnpm run \"/^build:.*/\"",
-    "build:ts": "tsc -p tsconfig.json && tsc -p tsconfig.commonjs.json",
-    "test": "pnpm run \"/^test:.*/\"",
-    "test:lint": "eslint --ext .ts,.js .",
-    "test:unit": "mocha",
-    "test:format": "prettier --check .",
+    "prepack": "pnpm run clean && pnpm run lint && pnpm run build && pnpm run test",
+    "build": "tsc -p tsconfig.json && tsc -p tsconfig.commonjs.json",
+    "lint": "pnpm run \"/^lint:.*/\"",
+    "lint:tsc": "tsc -p tsconfig.json --noEmit",
+    "lint:tsc_test": "tsc -p test/tsconfig.json",
+    "lint:eslint": "eslint .",
+    "lint:prettier": "prettier . --check",
+    "format": "prettier . --write",
+    "test": "TSX_TSCONFIG_PATH=test/tsconfig.json mocha",
     "coverage": "pnpm run \"/^coverage:.*/\"",
-    "coverage:run": "nyc pnpm run test:unit",
+    "coverage:run": "nyc pnpm run test",
     "coverage:open": "open coverage/index.html > /dev/null 2>&1 &",
-    "fix": "pnpm run \"/^fix:.*/\"",
-    "fix:format": "prettier --write .",
     "docs": "typedoc --options typedoc.json src/index.ts",
     "clean": "rm -rf build docs coverage .nyc_output"
   }

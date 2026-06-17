@@ -6,7 +6,8 @@ In the language of [this article](https://mattweidner.com/2024/06/04/server-arch
 
 ## Commands
 
+- Lint with `pnpm lint`.
+- Test with `pnpm test`. Use `pnpm coverage` for code coverage (opens in browser).
 - Build with `pnpm build`.
-- Lint, test, etc. with `pnpm test`. Use `pnpm coverage` for code coverage (opens in browser).
-- Preview typedoc with `pnpm docs`. (Open `docs/index.html` in a browser.)
+- Preview typedoc with `pnpm run docs`. (Open `docs/index.html` in a browser.)
 - Publish with `pnpm publish`.
