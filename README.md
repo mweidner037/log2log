@@ -1,14 +1,8 @@
-# Template Typescript lib
+# log2log
 
-Template for a TypeScript library meant to be published on npm.
+Convert a log of mutations into a log of key-value store changes.
 
-Setup and package versions should be current as of Feb 19 2023.
-
-## Files
-
-- `src/`: Source folder. Entry point is `index.ts`. Built to `build/esm` and `build/commonjs`.
-  - Node.js uses the CommonJS build: we point to it with `main` in `package.json` and **don't** set `type: "module"`. That way, we don't have to change any file extensions to `.mjs` or `.cjs`, and we don't have to add any explicit extensions to TypeScript imports (`require()` will try adding the `.js` extension automatically). Thus we don't need any post-`tsc` build steps.
-- `test/`: Test folder. Runs using mocha.
+In the language of [this article](https://mattweidner.com/2024/06/04/server-architectures.html), the library is designed to help implement server reconciliation in a system that sends client->erver mutations and server->client state changes.
 
 ## Commands
 
@@ -16,10 +10,3 @@ Setup and package versions should be current as of Feb 19 2023.
 - Test, lint, etc. with `npm run test`. Use `npm run coverage` for code coverage (opens in browser).
 - Preview typedoc with `npm run docs`. (Open `docs/index.html` in a browser.)
 - Publish with `npm publish`.
-
-## TODO
-
-- Delete `.git`, then setup your own Git repo.
-- Search for TODO.
-- Write your library in `src/`.
-- Replace this README.
