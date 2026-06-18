@@ -1,4 +1,4 @@
-# log2log
+# Log2log
 
 Convert a log of mutations into a log of key-value store changes.
 
