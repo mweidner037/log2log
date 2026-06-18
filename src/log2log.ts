@@ -1,6 +1,22 @@
+import { BiMap } from "./bi_map";
+import { BaseTypeToModel, BaseValue } from "./model";
 import { ValueStore } from "./store";
-import { BaseTypeToModel } from "./type-to-model";
+import { Transaction } from "./transaction";
 
-export class Log2Log<TypeToModel extends BaseTypeToModel> {
-  constructor(readonly store: ValueStore<TypeToModel>) {}
+export class Log2Log<TTM extends BaseTypeToModel> {
+  constructor(readonly typeToModel: TTM, readonly store: ValueStore<TTM>) {}
+}
+
+interface TransactionUpdates<TTM extends BaseTypeToModel> {
+  sets: BiMap<TTM, BaseValue>;
+  updates: BiMap<TTM, object[]>;
+}
+
+class TransactionImpl<TTM extends BaseTypeToModel> implements Transaction<TTM> {
+  constructor(
+    private readonly typeToModel: TTM,
+    private readonly store: ValueStore<TTM>
+  ) {}
+
+  getUpdates(): TransactionUpdates<TTM> {}
 }

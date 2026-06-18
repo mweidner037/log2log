@@ -1,32 +1,63 @@
-import { BaseTypeToModel, MutableValueType, ValueType } from "./type-to-model";
+import { BaseTypeToModel, MutableValueType, ValueType } from "./model";
 
-export interface Transaction<TypeToModel extends BaseTypeToModel> {
-  get<K extends keyof TypeToModel>(
+export interface Transaction<TTM extends BaseTypeToModel> {
+  /**
+   * Returns the value with the given type and id, or null if it does not exist.
+   */
+  get<K extends keyof TTM>(type: K, id: string): ValueType<TTM, K> | null;
+
+  /**
+   * Returns the values with the given type and ids.
+   *
+   * The returned values are in the same order as ids, skipping any ids
+   * that do not exist.
+   */
+  getAll<K extends keyof TTM>(type: K, ids: string[]): ValueType<TTM, K>[];
+
+  /**
+   * Returns a mutable version of the value with the given type and id,
+   * or null if it does not exist.
+   *
+   * Changes to the mutable value are committed at the end of the transaction.
+   */
+  getMutable<K extends keyof TTM>(
     type: K,
     id: string
-  ): ValueType<TypeToModel, K> | null;
-
-  getAll<K extends keyof TypeToModel>(
-    type: K,
-    ids: string[]
-  ): ValueType<TypeToModel, K>[];
-
-  getMutable<K extends keyof TypeToModel>(
-    type: K,
-    id: string
-  ): MutableValueType<TypeToModel, K> | null;
-  getMutable<K extends keyof TypeToModel>(
+  ): MutableValueType<TTM, K> | null;
+  /**
+   * Returns a mutable version of the value with the given type and id,
+   * creating it from the given initialValue if it does not exist.
+   *
+   * Changes to the mutable value are committed at the end of the transaction.
+   * If the mutable value is created from initialValue but no further changes are made,
+   * the initialValue is committed.
+   */
+  getMutable<K extends keyof TTM>(
     type: K,
     id: string,
-    initialValue: ValueType<TypeToModel, K>
-  ): MutableValueType<TypeToModel, K>;
+    initialValue: ValueType<TTM, K>
+  ): MutableValueType<TTM, K>;
 
-  getAllMutable<K extends keyof TypeToModel>(
+  /**
+   * Returns mutable versions of the values with the given type and ids.
+   *
+   * The returned values are in the same order as ids, skipping any ids
+   * that do not exist.
+   *
+   * Changes to the mutable values are committed at the end of the transaction.
+   */
+  getAllMutable<K extends keyof TTM>(
     type: K,
     ids: string[]
-  ): MutableValueType<TypeToModel, K>[];
+  ): MutableValueType<TTM, K>[];
 
-  set<K extends keyof TypeToModel>(value: ValueType<TypeToModel, K>): void;
-
-  delete<K extends keyof TypeToModel>(type: K, id: string): void;
+  /**
+   * Sets the given value, storing it according to its type and id.
+   * The value may be new or it may overwrite an existing value.
+   *
+   * Note: Any active mutable versions of the value are overridden
+   * (their changes will not be committed). Future reads and writes to
+   * the mutable versions exhibit undefined behavior.
+   */
+  set<K extends keyof TTM>(value: ValueType<TTM, K>): void;
 }
