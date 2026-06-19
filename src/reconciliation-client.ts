@@ -1,7 +1,7 @@
 import { TransactionImpl } from "./internal/transaction-impl";
 import { ChangeSet } from "./log2log";
 import { BaseTypeToModel, BaseValue, ValueType } from "./model";
-import { MutationCallback } from "./mutation";
+import { Mutation } from "./mutation";
 import { SavedState } from "./saved-state";
 import { BiMap } from "./util/bi-map";
 import { PersistentBiMap } from "./util/persistent-bi-map";
@@ -45,7 +45,7 @@ export class ReconciliationClient<TTM extends BaseTypeToModel> {
    */
   private optimisticChanges = new BiMap<TTM, BaseValue>();
   /** Keyed by mutation id. Iterator order matches the original applyOptimisticMutation order. */
-  private pendingMutations = new Map<string, MutationCallback<TTM>>();
+  private pendingMutations = new Map<string, Mutation<TTM>>();
 
   constructor(
     readonly typeToModel: TTM,
@@ -102,17 +102,14 @@ export class ReconciliationClient<TTM extends BaseTypeToModel> {
    * @returns The changes to the current (optimistic) state. A mutation can only
    * set values (never delete), so the result has no deletions.
    */
-  applyOptimisticMutation(
-    id: string,
-    mutation: MutationCallback<TTM>
-  ): ClientChangeSet<TTM> {
+  applyOptimisticMutation(mutation: Mutation<TTM>): ClientChangeSet<TTM> {
     // Run the mutation on top of the current optimistic state. If it throws,
     // the error propagates here before we touch any state, so this is a no-op.
     const transaction = new TransactionImpl(
       this.typeToModel,
       this.optimisticState
     );
-    mutation(transaction);
+    mutation.apply(transaction);
 
     // The mutation succeeded: commit its changes to the optimistic state and
     // remember it so that it can be rerun against future server states. The
@@ -124,7 +121,7 @@ export class ReconciliationClient<TTM extends BaseTypeToModel> {
       sets,
       this.optimisticChanges
     );
-    this.pendingMutations.set(id, mutation);
+    this.pendingMutations.set(mutation.id, mutation);
     return { sets, deletes: new Map() };
   }
 
@@ -165,16 +162,16 @@ export class ReconciliationClient<TTM extends BaseTypeToModel> {
     // rebuild the optimistic state. A rerun that throws is skipped (a no-op),
     // but stays pending until it is confirmed.
     let optimisticState = this.serverState;
-    for (const [id, mutation] of this.pendingMutations.entries()) {
+    for (const mutation of this.pendingMutations.values()) {
       const transaction = new TransactionImpl(
         this.typeToModel,
         optimisticState
       );
       try {
-        mutation(transaction);
+        mutation.apply(transaction);
       } catch (error) {
         console.log(
-          "Mutation " + id + " failed when rerunning, skipping",
+          "Mutation " + mutation.id + " failed when rerunning, skipping",
           error
         );
         continue;

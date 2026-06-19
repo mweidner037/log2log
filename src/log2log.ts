@@ -1,6 +1,6 @@
 import { TransactionImpl } from "./internal/transaction-impl";
 import { BaseTypeToModel, BaseValue } from "./model";
-import { MutationCallback } from "./mutation";
+import { Mutation } from "./mutation";
 import { SavedState } from "./saved-state";
 import { BiMap } from "./util/bi-map";
 
@@ -21,9 +21,10 @@ export interface ChangeSet<TTM extends BaseTypeToModel> {
 
 export interface ApplyMutationsResult<TTM extends BaseTypeToModel> {
   /**
-   * For each mutation applied, null if it succeeded, or the thrown error if it failed.
+   * The thrown error for each mutation that failed, keyed by mutation id.
+   * Mutations that succeeded are omitted.
    */
-  errors: unknown[];
+  errors: Map<string, unknown>;
   /**
    * The cumulative changes caused by these mutations.
    */
@@ -63,10 +64,8 @@ export class Log2Log<TTM extends BaseTypeToModel> {
    *
    * Any mutations that throw become no-ops.
    */
-  applyMutations(
-    mutations: MutationCallback<TTM>[]
-  ): ApplyMutationsResult<TTM> {
-    const errors: unknown[] = [];
+  applyMutations(mutations: Mutation<TTM>[]): ApplyMutationsResult<TTM> {
+    const errors = new Map<string, unknown>();
     // The overall changes, accumulated across successful mutations and keyed by
     // (type, id). A given (type, id) is in at most one of these maps.
     const blindSets = new BiMap<TTM, BaseValue>();
@@ -75,14 +74,14 @@ export class Log2Log<TTM extends BaseTypeToModel> {
     for (const mutation of mutations) {
       const transaction = new TransactionImpl(this.typeToModel, this.state);
       try {
-        mutation(transaction);
+        mutation.apply(transaction);
       } catch (error) {
         // A failed mutation is a no-op: record the error and move on without
         // touching the state or the accumulated changes.
-        errors.push(error);
+        console.log("Mutation " + mutation.id + " failed, skipping", error);
+        errors.set(mutation.id, error);
         continue;
       }
-      errors.push(null);
 
       // The mutation succeeded. Apply its changes to this.state so that the
       // next mutation sees them, and fold them into the overall changeSet.
