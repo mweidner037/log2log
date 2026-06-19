@@ -2,102 +2,21 @@ import { assert } from "chai";
 import { describe, it } from "mocha";
 
 import { ChangeSet, Log2Log } from "../src/log2log";
-import { BaseValue, MutableValue, defineModel } from "../src/model";
-import { SavedState } from "../src/saved-state";
-
-/* -------------------------------------------------------------------------- */
-/* Made-up models for testing.                                                */
-/* -------------------------------------------------------------------------- */
-
-/** A counter whose mutable tracks additive changes (commit() -> deltas). */
-interface Counter extends BaseValue<"counter"> {
-  readonly count: number;
-}
-interface CounterUpdate {
-  readonly delta: number;
-}
-class CounterMutable implements MutableValue<Counter, CounterUpdate> {
-  private base: Counter;
-  private pending = 0;
-
-  constructor(value: Counter) {
-    this.base = value;
-  }
-
-  add(delta: number): void {
-    this.pending += delta;
-  }
-
-  _finish(): { value: Counter; updates: CounterUpdate[] } {
-    return {
-      value: this._toImmutable(),
-      updates: this.pending !== 0 ? [{ delta: this.pending }] : [],
-    };
-  }
-  _toImmutable(): Counter {
-    return { ...this.base, count: this.base.count + this.pending };
-  }
-}
-
-/** A last-writer-wins string register. */
-interface Register extends BaseValue<"register"> {
-  readonly value: string;
-}
-interface RegisterUpdate {
-  readonly value: string;
-}
-class RegisterMutable implements MutableValue<Register, RegisterUpdate> {
-  private current: Register;
-  private changed = false;
-
-  constructor(value: Register) {
-    this.current = value;
-  }
-
-  setValue(value: string): void {
-    this.current = { ...this.current, value };
-    this.changed = true;
-  }
-
-  _finish(): { value: Register; updates: RegisterUpdate[] } {
-    return {
-      value: this.current,
-      updates: this.changed ? [{ value: this.current.value }] : [],
-    };
-  }
-  _toImmutable(): Register {
-    return this.current;
-  }
-}
-
-const typeToModel = {
-  counter: defineModel<Counter, CounterMutable, CounterUpdate>({
-    toMutable: (value) => new CounterMutable(value),
-    applyUpdates: (value, updates) => ({
-      ...value,
-      count: value.count + updates.reduce((sum, u) => sum + u.delta, 0),
-    }),
-  }),
-  register: defineModel<Register, RegisterMutable, RegisterUpdate>({
-    toMutable: (value) => new RegisterMutable(value),
-    applyUpdates: (value, updates) =>
-      updates.length === 0
-        ? value
-        : { ...value, value: updates[updates.length - 1].value },
-  }),
-};
-type TTM = typeof typeToModel;
+import { BaseValue } from "../src/model";
+import {
+  Counter,
+  Register,
+  TTM,
+  newInitialState,
+  typeToModel,
+} from "./test-models";
 
 /* -------------------------------------------------------------------------- */
 /* Helpers.                                                                    */
 /* -------------------------------------------------------------------------- */
 
 function newLog2Log(): Log2Log<TTM> {
-  const initialState: SavedState<TTM> = {
-    counter: [{ type: "counter", id: "a", count: 10 }],
-    register: [{ type: "register", id: "r", value: "initial" }],
-  };
-  return new Log2Log(typeToModel, initialState);
+  return new Log2Log(typeToModel, newInitialState());
 }
 
 function findSet<V extends BaseValue>(
@@ -124,8 +43,8 @@ function findUpdate<V extends BaseValue>(
 
 describe("applyMutations", () => {
   it("reads fall through to the initial state", () => {
-    let read: Counter | null | undefined;
-    let missing: Counter | null | undefined;
+    let read: Counter | undefined;
+    let missing: Counter | undefined;
     newLog2Log().applyMutations([
       (tx) => {
         read = tx.get("counter", "a");
@@ -133,7 +52,7 @@ describe("applyMutations", () => {
       },
     ]);
     assert.deepEqual(read, { type: "counter", id: "a", count: 10 });
-    assert.isNull(missing);
+    assert.isUndefined(missing);
   });
 
   it("reports updates for mutated existing values", () => {

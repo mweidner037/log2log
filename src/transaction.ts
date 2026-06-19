@@ -2,9 +2,9 @@ import { BaseTypeToModel, MutableValueType, ValueType } from "./model";
 
 export interface Transaction<TTM extends BaseTypeToModel> {
   /**
-   * Returns the value with the given type and id, or null if it does not exist.
+   * Returns the value with the given type and id, or undefined if it does not exist.
    */
-  get<K extends keyof TTM>(type: K, id: string): ValueType<TTM, K> | null;
+  get<K extends keyof TTM>(type: K, id: string): ValueType<TTM, K> | undefined;
 
   /**
    * Returns the values with the given type and ids.
@@ -16,14 +16,14 @@ export interface Transaction<TTM extends BaseTypeToModel> {
 
   /**
    * Returns a mutable version of the value with the given type and id,
-   * or null if it does not exist.
+   * or undefined if it does not exist.
    *
    * Changes to the mutable value are committed at the end of the transaction.
    */
   getMutable<K extends keyof TTM>(
     type: K,
     id: string
-  ): MutableValueType<TTM, K> | null;
+  ): MutableValueType<TTM, K> | undefined;
   /**
    * Returns a mutable version of the value with the given type and id,
    * creating it from the given initialValue if it does not exist.
