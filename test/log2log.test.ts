@@ -34,16 +34,10 @@ class CounterMutable implements MutableValue<Counter, CounterUpdate> {
     this.pending += delta;
   }
 
-  beginTransaction(): void {
-    this.pending = 0;
+  _getUpdates(): CounterUpdate[] {
+    return this.pending !== 0 ? [{ delta: this.pending }] : [];
   }
-  commit(): CounterUpdate[] {
-    const updates = this.pending !== 0 ? [{ delta: this.pending }] : [];
-    this.base = { ...this.base, count: this.base.count + this.pending };
-    this.pending = 0;
-    return updates;
-  }
-  toImmutable(): Counter {
+  _toImmutable(): Counter {
     return { ...this.base, count: this.base.count + this.pending };
   }
 }
@@ -68,15 +62,10 @@ class RegisterMutable implements MutableValue<Register, RegisterUpdate> {
     this.changed = true;
   }
 
-  beginTransaction(): void {
-    this.changed = false;
+  _getUpdates(): RegisterUpdate[] {
+    return this.changed ? [{ value: this.current.value }] : [];
   }
-  commit(): RegisterUpdate[] {
-    const updates = this.changed ? [{ value: this.current.value }] : [];
-    this.changed = false;
-    return updates;
-  }
-  toImmutable(): Register {
+  _toImmutable(): Register {
     return this.current;
   }
 }
@@ -161,7 +150,7 @@ describe("Transaction", () => {
       count: 99,
     });
     // getMutable sees the set value.
-    assert.deepEqual(tx.getMutable("counter", "a")!.toImmutable(), {
+    assert.deepEqual(tx.getMutable("counter", "a")!._toImmutable(), {
       type: "counter",
       id: "a",
       count: 99,
@@ -244,7 +233,7 @@ describe("Transaction", () => {
       id: "new",
       count: 1,
     });
-    assert.deepEqual(mut.toImmutable(), {
+    assert.deepEqual(mut._toImmutable(), {
       type: "counter",
       id: "new",
       count: 1,
@@ -321,12 +310,12 @@ describe("Transaction", () => {
 
     const mutables = tx.getAllMutable("counter", ["a", "missing", "b"]);
     assert.strictEqual(mutables.length, 2);
-    assert.deepEqual(mutables[0].toImmutable(), {
+    assert.deepEqual(mutables[0]._toImmutable(), {
       type: "counter",
       id: "a",
       count: 10,
     });
-    assert.deepEqual(mutables[1].toImmutable(), {
+    assert.deepEqual(mutables[1]._toImmutable(), {
       type: "counter",
       id: "b",
       count: 3,

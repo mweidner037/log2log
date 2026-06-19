@@ -6,9 +6,15 @@ export interface BaseValue<K = string> {
 }
 
 export interface MutableValue<V, U> {
-  beginTransaction(): void;
-  commit(): U[];
-  toImmutable(): V;
+  /**
+   * Returns updates describing all changes to this MutableValue
+   * since it was created.
+   */
+  _getUpdates(): U[];
+  /**
+   * Converts the current state of this MutableValue to an immutable value for the model type.
+   */
+  _toImmutable(): V;
 }
 
 export interface DefModel<
