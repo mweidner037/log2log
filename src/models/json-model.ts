@@ -550,6 +550,15 @@ function applyPatch(root: JsonObject, patch: JsonPatchExtended): void {
 /* -------------------------------------------------------------------------- */
 
 /**
+ * Deep readonly wrapper for plain JSON values (only).
+ */
+export type DeepReadonly<T> = T extends Array<infer U>
+  ? ReadonlyArray<DeepReadonly<U>>
+  : T extends object
+  ? { readonly [K in keyof T]: DeepReadonly<T[K]> }
+  : T;
+
+/**
  * Defines a {@link DefModel} for a JSON-serializable value type `T`.
  *
  * The mutable value behaves like a plain (mutable) `T`: you read and write its
@@ -566,16 +575,16 @@ function applyPatch(root: JsonObject, patch: JsonPatchExtended): void {
  * so the patches don't reflect their future internal changes.
  *
  * @typeParam T The mutable value type.
- * The (immutable) value type is then `Readonly<T>`.
+ * The (immutable) value type is then `DeepReadonly<T>`.
  */
 export function defineJsonModel<T extends BaseValue>(): DefModel<
-  Readonly<T>,
-  T & MutableValue<Readonly<T>, JsonPatchExtended>,
+  DeepReadonly<T>,
+  T & MutableValue<DeepReadonly<T>, JsonPatchExtended>,
   JsonPatchExtended
 > {
   return defineModel<
-    Readonly<T>,
-    T & MutableValue<Readonly<T>, JsonPatchExtended>,
+    DeepReadonly<T>,
+    T & MutableValue<DeepReadonly<T>, JsonPatchExtended>,
     JsonPatchExtended
   >({
     toMutable(value) {
@@ -583,12 +592,12 @@ export function defineJsonModel<T extends BaseValue>(): DefModel<
         structuredClone(value as unknown as JsonObject)
       );
       return tracker.proxyFor(tracker.root, null, "") as unknown as T &
-        MutableValue<Readonly<T>, JsonPatchExtended>;
+        MutableValue<DeepReadonly<T>, JsonPatchExtended>;
     },
     applyUpdates(value, updates) {
       const root = structuredClone(value as unknown as JsonObject);
       for (const patch of updates) applyPatch(root, patch);
-      return root as unknown as Readonly<T>;
+      return root as unknown as DeepReadonly<T>;
     },
   });
 }

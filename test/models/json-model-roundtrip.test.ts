@@ -3,6 +3,7 @@ import { describe, it } from "mocha";
 
 import { BaseValue } from "../../src/model";
 import {
+  DeepReadonly,
   JsonPatchExtended,
   defineJsonModel,
 } from "../../src/models/json-model";
@@ -12,7 +13,7 @@ import {
 /* -------------------------------------------------------------------------- */
 
 // Note: the mutable type is `Doc & MutableValue<...>`, so `Doc` uses writable
-// properties; `Readonly<Doc>` is the immutable value type.
+// properties; `DeepReadonly<Doc>` is the immutable value type.
 interface Doc extends BaseValue<"doc"> {
   title: string;
   tags: string[];
@@ -48,7 +49,7 @@ function newDoc(): Doc {
 function roundtrip(
   mutate: (m: ReturnType<typeof docModel.toMutable>) => void
 ): {
-  value: Readonly<Doc>;
+  value: DeepReadonly<Doc>;
   updates: JsonPatchExtended[];
 } {
   const original = newDoc();
