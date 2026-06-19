@@ -4,23 +4,23 @@ import { BaseValue, DefModel, MutableValue, defineModel } from "../model";
 /* JSON values.                                                               */
 /* -------------------------------------------------------------------------- */
 
-/** A JSON-serializable value. */
-export type Json =
+/** A JSON-serializable value, used in JsonPatchExtended. */
+export type JsonPatchValue =
   | null
   | boolean
   | number
   | string
-  | Json[]
-  | { [key: string]: Json };
+  | JsonPatchValue[]
+  | { [key: string]: JsonPatchValue };
 
-/** A JSON object (the non-array, non-primitive case of {@link Json}). */
-type JsonObject = { [key: string]: Json };
+/** A JSON object (the non-array, non-primitive case of {@link JsonPatchValue}). */
+type JsonObject = { [key: string]: JsonPatchValue };
 /** A JSON array. */
-type JsonArray = Json[];
+type JsonArray = JsonPatchValue[];
 /** A JSON value that other values can nest inside: an object or array. */
 type JsonContainer = JsonObject | JsonArray;
 
-function isContainer(value: Json): value is JsonContainer {
+function isContainer(value: JsonPatchValue): value is JsonContainer {
   return typeof value === "object" && value !== null;
 }
 
@@ -35,9 +35,17 @@ function isContainer(value: Json): value is JsonContainer {
  * Each `path` is a JSON Pointer (RFC 6901): "" for the root, or "/" followed by
  * "/"-separated, escaped path segments (e.g. "/items/0/name").
  */
-export type JsonPatch =
-  | { readonly op: "add"; readonly path: string; readonly value: Json }
-  | { readonly op: "replace"; readonly path: string; readonly value: Json }
+export type JsonPatchExtended =
+  | {
+      readonly op: "add";
+      readonly path: string;
+      readonly value: JsonPatchValue;
+    }
+  | {
+      readonly op: "replace";
+      readonly path: string;
+      readonly value: JsonPatchValue;
+    }
   | { readonly op: "remove"; readonly path: string }
   | {
       /** Replaces `remove` elements starting at `index` with `add`. */
@@ -45,7 +53,7 @@ export type JsonPatch =
       readonly path: string;
       readonly index: number;
       readonly remove: number;
-      readonly add: readonly Json[];
+      readonly add: readonly JsonPatchValue[];
     };
 
 /** Escapes a path segment for use in a JSON Pointer. */
@@ -75,7 +83,7 @@ function parsePointer(pointer: string): string[] {
 
 /**
  * Tracks all mutations made to a single root JSON value (via its proxies) as a
- * list of {@link JsonPatch}es.
+ * list of {@link JsonPatchExtended}es.
  *
  * The mutations are applied in place to a private deep clone of the root, so
  * the tracker always holds the value's current state. Paths are recomputed
@@ -83,7 +91,7 @@ function parsePointer(pointer: string): string[] {
  * reorderings.
  */
 class JsonTracker {
-  readonly patches: JsonPatch[] = [];
+  readonly patches: JsonPatchExtended[] = [];
   /** Cache of proxies, keyed by their backing (live) JSON container. */
   private readonly proxyCache = new WeakMap<JsonContainer, object>();
   /** Maps each non-root container to its parent container and key within it. */
@@ -190,7 +198,7 @@ class ObjectHandler implements ProxyHandler<JsonObject> {
   set(target: JsonObject, key: string | symbol, value: unknown): boolean {
     if (typeof key === "symbol") return Reflect.set(target, key, value);
     const existed = Object.prototype.hasOwnProperty.call(target, key);
-    const stored = structuredClone(value as Json);
+    const stored = structuredClone(value as JsonPatchValue);
     target[key] = stored;
     this.tracker.patches.push({
       op: existed ? "replace" : "add",
@@ -236,7 +244,7 @@ class ArrayHandler implements ProxyHandler<JsonArray> {
     });
   }
 
-  private readonly push = (...items: Json[]): number => {
+  private readonly push = (...items: JsonPatchValue[]): number => {
     const index = this.target.length;
     const stored = items.map((item) => structuredClone(item));
     this.target.push(...stored);
@@ -250,7 +258,7 @@ class ArrayHandler implements ProxyHandler<JsonArray> {
     return this.target.length;
   };
 
-  private readonly pop = (): Json | undefined => {
+  private readonly pop = (): JsonPatchValue | undefined => {
     if (this.target.length === 0) return undefined;
     const index = this.target.length - 1;
     const removed = this.target.pop();
@@ -264,7 +272,7 @@ class ArrayHandler implements ProxyHandler<JsonArray> {
     return removed;
   };
 
-  private readonly shift = (): Json | undefined => {
+  private readonly shift = (): JsonPatchValue | undefined => {
     if (this.target.length === 0) return undefined;
     const removed = this.target.shift();
     this.tracker.patches.push({
@@ -277,7 +285,7 @@ class ArrayHandler implements ProxyHandler<JsonArray> {
     return removed;
   };
 
-  private readonly unshift = (...items: Json[]): number => {
+  private readonly unshift = (...items: JsonPatchValue[]): number => {
     const stored = items.map((item) => structuredClone(item));
     this.target.unshift(...stored);
     this.tracker.patches.push({
@@ -293,8 +301,8 @@ class ArrayHandler implements ProxyHandler<JsonArray> {
   private readonly splice = (
     start?: number,
     deleteCount?: number,
-    ...items: Json[]
-  ): Json[] => {
+    ...items: JsonPatchValue[]
+  ): JsonPatchValue[] => {
     if (start === undefined) return [];
     const len = this.target.length;
     const index = start < 0 ? Math.max(len + start, 0) : Math.min(start, len);
@@ -321,14 +329,16 @@ class ArrayHandler implements ProxyHandler<JsonArray> {
     return this.self();
   };
 
-  private readonly sort = (compare?: (a: Json, b: Json) => number): object => {
+  private readonly sort = (
+    compare?: (a: JsonPatchValue, b: JsonPatchValue) => number
+  ): object => {
     this.target.sort(compare);
     this.emitReplaceWhole();
     return this.self();
   };
 
   private readonly fill = (
-    value: Json,
+    value: JsonPatchValue,
     start?: number,
     end?: number
   ): object => {
@@ -401,14 +411,14 @@ class ArrayHandler implements ProxyHandler<JsonArray> {
           path: this.base(),
           index: oldLength,
           remove: 0,
-          add: new Array<Json>(newLength - oldLength).fill(null),
+          add: new Array<JsonPatchValue>(newLength - oldLength).fill(null),
         });
       }
       return true;
     }
     const index = toIndex(key);
     if (index === undefined) return Reflect.set(target, key, value);
-    const stored = structuredClone(value as Json);
+    const stored = structuredClone(value as JsonPatchValue);
     if (index < target.length) {
       target[index] = stored;
       this.tracker.patches.push({
@@ -420,7 +430,7 @@ class ArrayHandler implements ProxyHandler<JsonArray> {
       // Appending at or past the end. Any skipped slots become null holes.
       const oldLength = target.length;
       target[index] = stored;
-      const add: Json[] = [];
+      const add: JsonPatchValue[] = [];
       for (let i = oldLength; i < index; i++) add.push(null);
       add.push(structuredClone(stored));
       this.tracker.patches.push({
@@ -453,14 +463,14 @@ class ArrayHandler implements ProxyHandler<JsonArray> {
 
 function finishFn(
   tracker: JsonTracker
-): () => { value: Json; updates: JsonPatch[] } {
+): () => { value: JsonPatchValue; updates: JsonPatchExtended[] } {
   return () => ({
     value: structuredClone(tracker.root),
     updates: tracker.patches,
   });
 }
 
-function toImmutableFn(tracker: JsonTracker): () => Json {
+function toImmutableFn(tracker: JsonTracker): () => JsonPatchValue {
   return () => structuredClone(tracker.root);
 }
 
@@ -469,7 +479,7 @@ function toImmutableFn(tracker: JsonTracker): () => Json {
 /* -------------------------------------------------------------------------- */
 
 /** Indexes into a container by a (string) path segment. */
-function getChild(container: JsonContainer, segment: string): Json {
+function getChild(container: JsonContainer, segment: string): JsonPatchValue {
   if (Array.isArray(container)) return container[Number(segment)];
   return container[segment];
 }
@@ -489,7 +499,7 @@ function navigate(root: JsonContainer, segments: string[]): JsonContainer {
   return current;
 }
 
-function applyPatch(root: JsonObject, patch: JsonPatch): void {
+function applyPatch(root: JsonObject, patch: JsonPatchExtended): void {
   const segments = parsePointer(patch.path);
 
   if (patch.op === "splice") {
@@ -541,7 +551,7 @@ function applyPatch(root: JsonObject, patch: JsonPatch): void {
  * The mutable value behaves like a plain (mutable) `T`: you read and write its
  * properties, mutate nested objects, and call array methods directly. Behind
  * the scenes, a tree of {@link Proxy}s records every change as a
- * {@link JsonPatch}, which can later be replayed with `applyUpdates`.
+ * {@link JsonPatchExtended}, which can later be replayed with `applyUpdates`.
  *
  * Limitations:
  * - Type `T` must have readonly `type` and `id` properties.
@@ -556,20 +566,20 @@ function applyPatch(root: JsonObject, patch: JsonPatch): void {
  */
 export function defineJsonModel<T extends BaseValue>(): DefModel<
   Readonly<T>,
-  T & MutableValue<Readonly<T>, JsonPatch>,
-  JsonPatch
+  T & MutableValue<Readonly<T>, JsonPatchExtended>,
+  JsonPatchExtended
 > {
   return defineModel<
     Readonly<T>,
-    T & MutableValue<Readonly<T>, JsonPatch>,
-    JsonPatch
+    T & MutableValue<Readonly<T>, JsonPatchExtended>,
+    JsonPatchExtended
   >({
     toMutable(value) {
       const tracker = new JsonTracker(
         structuredClone(value as unknown as JsonObject)
       );
       return tracker.proxyFor(tracker.root, null, "") as unknown as T &
-        MutableValue<Readonly<T>, JsonPatch>;
+        MutableValue<Readonly<T>, JsonPatchExtended>;
     },
     applyUpdates(value, updates) {
       const root = structuredClone(value as unknown as JsonObject);

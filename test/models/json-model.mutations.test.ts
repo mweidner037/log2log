@@ -3,7 +3,10 @@ import { describe, it } from "mocha";
 
 import { Log2Log } from "../../src/log2log";
 import { BaseValue } from "../../src/model";
-import { JsonPatch, defineJsonModel } from "../../src/models/json-model";
+import {
+  JsonPatchExtended,
+  defineJsonModel,
+} from "../../src/models/json-model";
 import { SavedState } from "../../src/saved-state";
 
 /* -------------------------------------------------------------------------- */
@@ -71,7 +74,7 @@ describe("json-model via Log2Log", () => {
     assert.isUndefined(result.changes.blindSets.get("doc", "d1"));
     const update = result.changes.updates.get("doc", "d1");
     assert.isDefined(update);
-    const expectedUpdates: JsonPatch[] = [
+    const expectedUpdates: JsonPatchExtended[] = [
       { op: "replace", path: "/title", value: "Edited" },
       { op: "splice", path: "/tags", index: 2, remove: 0, add: ["c"] },
       { op: "replace", path: "/items/0/name", value: "first" },

@@ -2,7 +2,10 @@ import { assert } from "chai";
 import { describe, it } from "mocha";
 
 import { BaseValue } from "../../src/model";
-import { JsonPatch, defineJsonModel } from "../../src/models/json-model";
+import {
+  JsonPatchExtended,
+  defineJsonModel,
+} from "../../src/models/json-model";
 
 /* -------------------------------------------------------------------------- */
 /* Sample type and model.                                                     */
@@ -46,7 +49,7 @@ function roundtrip(
   mutate: (m: ReturnType<typeof docModel.toMutable>) => void
 ): {
   value: Readonly<Doc>;
-  updates: JsonPatch[];
+  updates: JsonPatchExtended[];
 } {
   const original = newDoc();
   const m = docModel.toMutable(original);
