@@ -1,5 +1,9 @@
 import { BaseValue, DefModel, MutableValue, defineModel } from "../model";
 
+// Based on json-patch-observe by Hai Phan
+// (https://github.com/ken107/jsonpatch-observe/blob/8077cffd9d6f245f537f35c3f0a9bcc75cb01008/src/observe.ts),
+// which is MIT licensed.
+
 /* -------------------------------------------------------------------------- */
 /* JSON values.                                                               */
 /* -------------------------------------------------------------------------- */
