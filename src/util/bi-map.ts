@@ -1,4 +1,4 @@
-import { BaseTypeToModel } from "./model";
+import { BaseTypeToModel } from "../model";
 
 /**
  * Creates a composite key from a type and id.
