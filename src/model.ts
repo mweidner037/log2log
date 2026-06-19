@@ -7,7 +7,6 @@ export interface BaseValue<K = string> {
 
 export interface MutableValue<V, U> {
   beginTransaction(): void;
-  rollback(): void;
   commit(): U[];
   toImmutable(): V;
 }
@@ -78,4 +77,4 @@ export type ValueType<
 export type MutableValueType<
   TTM extends BaseTypeToModel,
   K extends keyof TTM
-> = TTM[K] extends DefModel<any, any, infer M> ? M : never;
+> = TTM[K] extends DefModel<any, infer M, any> ? M : never;
