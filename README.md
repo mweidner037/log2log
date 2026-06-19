@@ -4,6 +4,8 @@ Convert a log of mutations into a log of key-value store changes.
 
 In the language of [this article](https://mattweidner.com/2024/06/04/server-architectures.html), Log2Log is designed to help implement a collaboration system that sends _mutations_ (high-level operations, like event sourcing events) from client->server but _state changes_ (low-level operations, like SQL row updates) from server->client.
 
+Log2Log assumes a specific key-value store structure: values are keyed by a model type and an id, with all models defined in a `typeToModel` const satisfying `BaseTypeToModel`. Various classes and interfaces then input `typeof typeToModel` as a generic type parameter `TTM` (usually inferred). The model definitions include various types and method needed by the key-value store; see `defineModel`.
+
 ## Commands
 
 - Lint with `pnpm lint`.
