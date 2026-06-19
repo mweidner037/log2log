@@ -1,8 +1,8 @@
-# Log2log
+# Log2Log
 
 Convert a log of mutations into a log of key-value store changes.
 
-In the language of [this article](https://mattweidner.com/2024/06/04/server-architectures.html), the library is designed to help implement server reconciliation in a system that sends client->erver mutations and server->client state changes.
+In the language of [this article](https://mattweidner.com/2024/06/04/server-architectures.html), Log2Log is designed to help implement a collaboration system that sends _mutations_ (high-level operations, like event sourcing events) from client->server but _state changes_ (low-level operations, like SQL row updates) from server->client.
 
 ## Commands
 

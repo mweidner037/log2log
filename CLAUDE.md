@@ -1,4 +1,4 @@
-# Log2log
+# Log2Log
 
 TypeScript library to convert a log of mutations (event sourcing events) into a log of changes to a target key-value store.
 

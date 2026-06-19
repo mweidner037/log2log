@@ -114,25 +114,31 @@ export class BiMap<TTM extends BaseTypeToModel, V> {
   }
 
   /**
-   * Returns all entries as an array of [type, id, value] tuples.
+   * Returns an iterator over all entries as [type, id, value] tuples.
    */
-  entries(): Array<[keyof TTM & string, string, V]> {
-    const results: Array<[keyof TTM & string, string, V]> = [];
-    this.forEach((type, id, value) => {
-      results.push([type, id, value]);
-    });
-    return results;
+  *entries(): IterableIterator<[keyof TTM & string, string, V]> {
+    for (const [compositeKey, value] of this.state) {
+      const [type, id] = parseKey<keyof TTM & string>(compositeKey);
+      yield [type, id, value];
+    }
+  }
+
+  /**
+   * Returns an iterator over all values in the map.
+   */
+  values(): IterableIterator<V> {
+    return this.state.values();
   }
 
   /**
    * Returns all unique type keys.
    */
-  outerKeys(): Array<keyof TTM & string> {
+  outerKeys(): Set<keyof TTM & string> {
     const seen = new Set<keyof TTM & string>();
     for (const compositeKey of this.state.keys()) {
       const [type] = parseKey<keyof TTM & string>(compositeKey);
       seen.add(type);
     }
-    return Array.from(seen);
+    return seen;
   }
 }
