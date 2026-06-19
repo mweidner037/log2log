@@ -6,9 +6,7 @@ In the language of [this article](https://mattweidner.com/2024/06/04/server-arch
 
 Log2Log assumes a specific key-value store structure: values are keyed by a model type and an id, with all models defined in a `typeToModel` const satisfying `BaseTypeToModel`. Various classes and interfaces then input `typeof typeToModel` as a generic type parameter `TTM` (usually inferred). The model definitions include various types and method needed by the key-value store; see `defineModel`.
 
-The Log2Log class is designed for use on a central collaboration server. Clients connected to that server should use ReconciliationClient, a key-value store replica that accept changes from the server **and** supports optimistic client operations
-
-- using [server reconciliation](https://mattweidner.com/2024/06/04/server-architectures.html#1-server-reconciliation).
+The Log2Log class is designed for use on a central collaboration server. Clients connected to that server should use ReconciliationClient, a key-value store replica that accept changes from the server **and** supports optimistic client operations using [server reconciliation](https://mattweidner.com/2024/06/04/server-architectures.html#1-server-reconciliation).
 
 ## Commands
 
