@@ -1,5 +1,6 @@
 export * from "./log2log";
 export * from "./model";
+export * from "./models/json-model";
 export * from "./mutation";
 export * from "./reconciliation-client";
 export * from "./saved-state";

@@ -1,0 +1,573 @@
+import { BaseValue, DefModel, MutableValue, defineModel } from "../model";
+
+/* -------------------------------------------------------------------------- */
+/* JSON values.                                                               */
+/* -------------------------------------------------------------------------- */
+
+/** A JSON-serializable value. */
+export type Json =
+  | null
+  | boolean
+  | number
+  | string
+  | Json[]
+  | { [key: string]: Json };
+
+/** A JSON object (the non-array, non-primitive case of {@link Json}). */
+export type JsonObject = { [key: string]: Json };
+/** A JSON array. */
+export type JsonArray = Json[];
+/** A JSON value that other values can nest inside: an object or array. */
+type JsonContainer = JsonObject | JsonArray;
+
+function isContainer(value: Json): value is JsonContainer {
+  return typeof value === "object" && value !== null;
+}
+
+/** Returns a deep copy of a JSON value. */
+function deepClone<T extends Json>(value: T): T {
+  if (Array.isArray(value)) {
+    return value.map((element) => deepClone(element)) as T;
+  }
+  if (isContainer(value)) {
+    const out: JsonObject = {};
+    for (const key of Object.keys(value)) {
+      out[key] = deepClone(value[key]);
+    }
+    return out as T;
+  }
+  return value;
+}
+
+/* -------------------------------------------------------------------------- */
+/* JSON patches (the update type).                                            */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * A single change to a JSON value, loosely following JSON Patch (RFC 6902).
+ *
+ * Each `path` is a JSON Pointer (RFC 6901): "" for the root, or "/" followed by
+ * "/"-separated, escaped path segments (e.g. "/items/0/name").
+ *
+ * In addition to the standard "add", "remove", and "replace" ops, we include a
+ * "splice" op for efficient array edits, mirroring `Array.prototype.splice`.
+ */
+export type JsonPatch =
+  | { readonly op: "add"; readonly path: string; readonly value: Json }
+  | { readonly op: "replace"; readonly path: string; readonly value: Json }
+  | { readonly op: "remove"; readonly path: string }
+  | {
+      /** Replaces `remove` elements starting at `index` with `add`. */
+      readonly op: "splice";
+      readonly path: string;
+      readonly index: number;
+      readonly remove: number;
+      readonly add: readonly Json[];
+    };
+
+/** Escapes a path segment for use in a JSON Pointer. */
+function escapeSegment(segment: string): string {
+  return segment.replace(/~/g, "~0").replace(/\//g, "~1");
+}
+
+/** Reverses {@link escapeSegment}. */
+function unescapeSegment(segment: string): string {
+  return segment.replace(/~1/g, "/").replace(/~0/g, "~");
+}
+
+/** Appends a segment to a JSON Pointer. */
+function appendPointer(base: string, segment: string | number): string {
+  return base + "/" + escapeSegment(String(segment));
+}
+
+/** Splits a JSON Pointer into its (unescaped) path segments. */
+function parsePointer(pointer: string): string[] {
+  if (pointer === "") return [];
+  return pointer.slice(1).split("/").map(unescapeSegment);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Proxy-based change tracking.                                               */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Tracks all mutations made to a single root JSON value (via its proxies) as a
+ * list of {@link JsonPatch}es.
+ *
+ * The mutations are applied in place to a private deep clone of the root, so
+ * the tracker always holds the value's current state. Paths are recomputed
+ * lazily (see {@link pointerOf}) so that they stay correct even after array
+ * reorderings.
+ */
+class JsonTracker {
+  readonly patches: JsonPatch[] = [];
+  /** Cache of proxies, keyed by their backing (live) JSON container. */
+  private readonly proxyCache = new WeakMap<JsonContainer, object>();
+  /** Maps each non-root container to its parent container. */
+  private readonly parentMap = new WeakMap<JsonContainer, JsonContainer>();
+
+  constructor(readonly root: JsonObject) {}
+
+  /** Returns the (cached) proxy for `target`, recording its parent. */
+  proxyFor(target: JsonContainer, parent: JsonContainer | null): object {
+    let proxy = this.proxyCache.get(target);
+    if (proxy === undefined) {
+      if (parent !== null) this.parentMap.set(target, parent);
+      proxy = Array.isArray(target)
+        ? new Proxy(target, new ArrayHandler(this, target))
+        : new Proxy(target, new ObjectHandler(this, target));
+      this.proxyCache.set(target, proxy);
+    }
+    return proxy;
+  }
+
+  /** Returns the existing proxy for `target`, which must already exist. */
+  existingProxy(target: JsonContainer): object {
+    return this.proxyCache.get(target)!;
+  }
+
+  /** Returns the current JSON Pointer to `target` from the root. */
+  pointerOf(target: JsonContainer): string {
+    if (target === this.root) return "";
+    const segments: string[] = [];
+    let current: JsonContainer = target;
+    while (current !== this.root) {
+      const parent = this.parentMap.get(current);
+      if (parent === undefined) break;
+      segments.unshift(keyInParent(parent, current));
+      current = parent;
+    }
+    return "/" + segments.map(escapeSegment).join("/");
+  }
+}
+
+/** Finds the key under which `child` is stored in `parent`. */
+function keyInParent(parent: JsonContainer, child: JsonContainer): string {
+  if (Array.isArray(parent)) return String(parent.indexOf(child));
+  for (const key of Object.keys(parent)) {
+    if (parent[key] === child) return key;
+  }
+  // Should not happen for a live child.
+  return "";
+}
+
+/** Parses an array index, or returns undefined if `key` is not one. */
+function toIndex(key: string): number | undefined {
+  const n = Number(key);
+  if (Number.isInteger(n) && n >= 0 && String(n) === key) return n;
+  return undefined;
+}
+
+/**
+ * The {@link MutableValue} methods, exposed on the root proxy. These names are
+ * intercepted by {@link ObjectHandler} on the root only; a root JSON object
+ * with conflicting property names would shadow them.
+ */
+const FINISH = "_finish";
+const TO_IMMUTABLE = "_toImmutable";
+
+class ObjectHandler implements ProxyHandler<JsonObject> {
+  constructor(
+    private readonly tracker: JsonTracker,
+    private readonly target: JsonObject
+  ) {}
+
+  private base(): string {
+    return this.tracker.pointerOf(this.target);
+  }
+
+  get(target: JsonObject, key: string | symbol): unknown {
+    if (typeof key !== "symbol" && target === this.tracker.root) {
+      if (key === FINISH) return finishFn(this.tracker);
+      if (key === TO_IMMUTABLE) return toImmutableFn(this.tracker);
+    }
+    if (
+      typeof key === "symbol" ||
+      !Object.prototype.hasOwnProperty.call(target, key)
+    ) {
+      return Reflect.get(target, key) as unknown;
+    }
+    const value = target[key];
+    if (isContainer(value)) return this.tracker.proxyFor(value, target);
+    return value;
+  }
+
+  set(target: JsonObject, key: string | symbol, value: unknown): boolean {
+    if (typeof key === "symbol") return Reflect.set(target, key, value);
+    const existed = Object.prototype.hasOwnProperty.call(target, key);
+    const stored = deepClone(value as Json);
+    target[key] = stored;
+    this.tracker.patches.push({
+      op: existed ? "replace" : "add",
+      path: appendPointer(this.base(), key),
+      value: deepClone(stored),
+    });
+    return true;
+  }
+
+  deleteProperty(target: JsonObject, key: string | symbol): boolean {
+    if (typeof key === "symbol") return Reflect.deleteProperty(target, key);
+    if (Object.prototype.hasOwnProperty.call(target, key)) {
+      delete target[key];
+      this.tracker.patches.push({
+        op: "remove",
+        path: appendPointer(this.base(), key),
+      });
+    }
+    return true;
+  }
+}
+
+class ArrayHandler implements ProxyHandler<JsonArray> {
+  constructor(
+    private readonly tracker: JsonTracker,
+    private readonly target: JsonArray
+  ) {}
+
+  private base(): string {
+    return this.tracker.pointerOf(this.target);
+  }
+
+  private self(): object {
+    return this.tracker.existingProxy(this.target);
+  }
+
+  /** Emits a patch replacing the whole array (for reorders, fills, etc.). */
+  private emitReplaceWhole(): void {
+    this.tracker.patches.push({
+      op: "replace",
+      path: this.base(),
+      value: deepClone(this.target),
+    });
+  }
+
+  private readonly push = (...items: Json[]): number => {
+    const index = this.target.length;
+    const stored = items.map((item) => deepClone(item));
+    this.target.push(...stored);
+    this.tracker.patches.push({
+      op: "splice",
+      path: this.base(),
+      index,
+      remove: 0,
+      add: stored.map((item) => deepClone(item)),
+    });
+    return this.target.length;
+  };
+
+  private readonly pop = (): Json | undefined => {
+    if (this.target.length === 0) return undefined;
+    const index = this.target.length - 1;
+    const removed = this.target.pop();
+    this.tracker.patches.push({
+      op: "splice",
+      path: this.base(),
+      index,
+      remove: 1,
+      add: [],
+    });
+    return removed;
+  };
+
+  private readonly shift = (): Json | undefined => {
+    if (this.target.length === 0) return undefined;
+    const removed = this.target.shift();
+    this.tracker.patches.push({
+      op: "splice",
+      path: this.base(),
+      index: 0,
+      remove: 1,
+      add: [],
+    });
+    return removed;
+  };
+
+  private readonly unshift = (...items: Json[]): number => {
+    const stored = items.map((item) => deepClone(item));
+    this.target.unshift(...stored);
+    this.tracker.patches.push({
+      op: "splice",
+      path: this.base(),
+      index: 0,
+      remove: 0,
+      add: stored.map((item) => deepClone(item)),
+    });
+    return this.target.length;
+  };
+
+  private readonly splice = (
+    start?: number,
+    deleteCount?: number,
+    ...items: Json[]
+  ): Json[] => {
+    if (start === undefined) return [];
+    const len = this.target.length;
+    const index = start < 0 ? Math.max(len + start, 0) : Math.min(start, len);
+    const stored = items.map((item) => deepClone(item));
+    // splice(start) deletes through the end, whereas splice(start, undefined)
+    // deletes nothing, so the two cases must be distinguished.
+    const removed =
+      deleteCount === undefined
+        ? this.target.splice(index)
+        : this.target.splice(index, deleteCount, ...stored);
+    this.tracker.patches.push({
+      op: "splice",
+      path: this.base(),
+      index,
+      remove: removed.length,
+      add: stored.map((item) => deepClone(item)),
+    });
+    return removed;
+  };
+
+  private readonly reverse = (): object => {
+    this.target.reverse();
+    this.emitReplaceWhole();
+    return this.self();
+  };
+
+  private readonly sort = (compare?: (a: Json, b: Json) => number): object => {
+    this.target.sort(compare);
+    this.emitReplaceWhole();
+    return this.self();
+  };
+
+  private readonly fill = (
+    value: Json,
+    start?: number,
+    end?: number
+  ): object => {
+    this.target.fill(deepClone(value), start, end);
+    this.emitReplaceWhole();
+    return this.self();
+  };
+
+  private readonly copyWithin = (
+    target: number,
+    start: number,
+    end?: number
+  ): object => {
+    this.target.copyWithin(target, start, end);
+    this.emitReplaceWhole();
+    return this.self();
+  };
+
+  get(target: JsonArray, key: string | symbol): unknown {
+    if (typeof key === "string") {
+      switch (key) {
+        case "push":
+          return this.push;
+        case "pop":
+          return this.pop;
+        case "shift":
+          return this.shift;
+        case "unshift":
+          return this.unshift;
+        case "splice":
+          return this.splice;
+        case "reverse":
+          return this.reverse;
+        case "sort":
+          return this.sort;
+        case "fill":
+          return this.fill;
+        case "copyWithin":
+          return this.copyWithin;
+      }
+      const index = toIndex(key);
+      if (index !== undefined) {
+        const value = target[index];
+        if (isContainer(value)) return this.tracker.proxyFor(value, target);
+        return value;
+      }
+    }
+    return Reflect.get(target, key) as unknown;
+  }
+
+  set(target: JsonArray, key: string | symbol, value: unknown): boolean {
+    if (typeof key === "symbol") return Reflect.set(target, key, value);
+    if (key === "length") {
+      const oldLength = target.length;
+      const newLength = Number(value);
+      target.length = newLength;
+      if (newLength < oldLength) {
+        this.tracker.patches.push({
+          op: "splice",
+          path: this.base(),
+          index: newLength,
+          remove: oldLength - newLength,
+          add: [],
+        });
+      } else if (newLength > oldLength) {
+        // The new slots are holes, which serialize to null.
+        this.tracker.patches.push({
+          op: "splice",
+          path: this.base(),
+          index: oldLength,
+          remove: 0,
+          add: new Array<Json>(newLength - oldLength).fill(null),
+        });
+      }
+      return true;
+    }
+    const index = toIndex(key);
+    if (index === undefined) return Reflect.set(target, key, value);
+    const stored = deepClone(value as Json);
+    if (index < target.length) {
+      target[index] = stored;
+      this.tracker.patches.push({
+        op: "replace",
+        path: appendPointer(this.base(), index),
+        value: deepClone(stored),
+      });
+    } else {
+      // Appending at or past the end. Any skipped slots become null holes.
+      const oldLength = target.length;
+      target[index] = stored;
+      const add: Json[] = [];
+      for (let i = oldLength; i < index; i++) add.push(null);
+      add.push(deepClone(stored));
+      this.tracker.patches.push({
+        op: "splice",
+        path: this.base(),
+        index: oldLength,
+        remove: 0,
+        add,
+      });
+    }
+    return true;
+  }
+
+  deleteProperty(target: JsonArray, key: string | symbol): boolean {
+    if (typeof key === "symbol") return Reflect.deleteProperty(target, key);
+    const index = toIndex(key);
+    if (index !== undefined && index < target.length) {
+      // Deleting an array index leaves a hole, which serializes to null.
+      delete target[index];
+      this.tracker.patches.push({
+        op: "replace",
+        path: appendPointer(this.base(), index),
+        value: null,
+      });
+      return true;
+    }
+    return Reflect.deleteProperty(target, key);
+  }
+}
+
+function finishFn(
+  tracker: JsonTracker
+): () => { value: Json; updates: JsonPatch[] } {
+  return () => ({ value: deepClone(tracker.root), updates: tracker.patches });
+}
+
+function toImmutableFn(tracker: JsonTracker): () => Json {
+  return () => deepClone(tracker.root);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Applying patches.                                                          */
+/* -------------------------------------------------------------------------- */
+
+/** Indexes into a container by a (string) path segment. */
+function getChild(container: JsonContainer, segment: string): Json {
+  if (Array.isArray(container)) return container[Number(segment)];
+  return container[segment];
+}
+
+/** Navigates from `root` along `segments`, returning the container reached. */
+function navigate(root: JsonContainer, segments: string[]): JsonContainer {
+  let current: JsonContainer = root;
+  for (const segment of segments) {
+    const next = getChild(current, segment);
+    if (!isContainer(next)) {
+      throw new Error(
+        `JSON patch path does not point to a container: /${segments.join("/")}`
+      );
+    }
+    current = next;
+  }
+  return current;
+}
+
+function applyPatch(root: JsonObject, patch: JsonPatch): void {
+  const segments = parsePointer(patch.path);
+
+  if (patch.op === "splice") {
+    const array = navigate(root, segments);
+    if (!Array.isArray(array)) {
+      throw new Error(
+        `JSON splice patch does not target an array: ${patch.path}`
+      );
+    }
+    array.splice(
+      patch.index,
+      patch.remove,
+      ...patch.add.map((v) => deepClone(v))
+    );
+    return;
+  }
+
+  const last = segments[segments.length - 1];
+  const parent = navigate(root, segments.slice(0, -1));
+
+  switch (patch.op) {
+    case "add":
+      if (Array.isArray(parent)) {
+        const index = last === "-" ? parent.length : Number(last);
+        parent.splice(index, 0, deepClone(patch.value));
+      } else {
+        parent[last] = deepClone(patch.value);
+      }
+      break;
+    case "replace":
+      if (Array.isArray(parent)) parent[Number(last)] = deepClone(patch.value);
+      else parent[last] = deepClone(patch.value);
+      break;
+    case "remove":
+      if (Array.isArray(parent)) parent.splice(Number(last), 1);
+      else delete parent[last];
+      break;
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* Model definition.                                                          */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Defines a {@link DefModel} for a JSON-serializable value type `T`.
+ *
+ * The mutable value behaves like a plain (mutable) `T`: you read and write its
+ * properties, mutate nested objects, and call array methods directly. Behind
+ * the scenes, a tree of {@link Proxy}s records every change as a
+ * {@link JsonPatch}, which can later be replayed with `applyUpdates`.
+ *
+ * The mutable also carries the {@link MutableValue} methods `_finish` and
+ * `_toImmutable`; these are not part of the tracked JSON (they do not appear in
+ * `Object.keys`, spreads, or `JSON.stringify`).
+ */
+export function defineJsonModel<T extends BaseValue>(): DefModel<
+  Readonly<T>,
+  T & MutableValue<Readonly<T>, JsonPatch>,
+  JsonPatch
+> {
+  return defineModel<
+    Readonly<T>,
+    T & MutableValue<Readonly<T>, JsonPatch>,
+    JsonPatch
+  >({
+    toMutable(value) {
+      const tracker = new JsonTracker(
+        deepClone(value as unknown as JsonObject)
+      );
+      return tracker.proxyFor(tracker.root, null) as unknown as T &
+        MutableValue<Readonly<T>, JsonPatch>;
+    },
+    applyUpdates(value, updates) {
+      const root = deepClone(value as unknown as JsonObject);
+      for (const patch of updates) applyPatch(root, patch);
+      return root as unknown as Readonly<T>;
+    },
+  });
+}
