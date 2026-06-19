@@ -34,8 +34,11 @@ class CounterMutable implements MutableValue<Counter, CounterUpdate> {
     this.pending += delta;
   }
 
-  _getUpdates(): CounterUpdate[] {
-    return this.pending !== 0 ? [{ delta: this.pending }] : [];
+  _finish(): [value: Counter, updates: CounterUpdate[]] {
+    return [
+      this._toImmutable(),
+      this.pending !== 0 ? [{ delta: this.pending }] : [],
+    ];
   }
   _toImmutable(): Counter {
     return { ...this.base, count: this.base.count + this.pending };
@@ -62,8 +65,8 @@ class RegisterMutable implements MutableValue<Register, RegisterUpdate> {
     this.changed = true;
   }
 
-  _getUpdates(): RegisterUpdate[] {
-    return this.changed ? [{ value: this.current.value }] : [];
+  _finish(): [value: Register, updates: RegisterUpdate[]] {
+    return [this.current, this.changed ? [{ value: this.current.value }] : []];
   }
   _toImmutable(): Register {
     return this.current;
@@ -191,16 +194,22 @@ describe("Transaction", () => {
     tx.getMutable("counter", "a")!.add(7);
     tx.getMutable("register", "r")!.setValue("hello");
 
-    const { sets, updates } = tx.getChanges();
+    const { blindSets: sets, updates } = tx.getChanges();
     assert.strictEqual(sets.size, 0);
-    assert.deepEqual(updates.get("counter", "a"), [{ delta: 7 }]);
-    assert.deepEqual(updates.get("register", "r"), [{ value: "hello" }]);
+    assert.deepEqual(updates.get("counter", "a") as [Counter, CounterUpdate[]], [
+      { type: "counter", id: "a", count: 17 },
+      [{ delta: 7 }],
+    ]);
+    assert.deepEqual(
+      updates.get("register", "r") as [Register, RegisterUpdate[]],
+      [{ type: "register", id: "r", value: "hello" }, [{ value: "hello" }]]
+    );
   });
 
   it("getChanges omits mutables that were not changed", () => {
     const tx = newLog2Log().beginTransaction();
     tx.getMutable("counter", "a"); // touched but not changed
-    const { sets, updates } = tx.getChanges();
+    const { blindSets: sets, updates } = tx.getChanges();
     assert.strictEqual(sets.size, 0);
     assert.strictEqual(updates.size, 0);
   });
@@ -209,7 +218,7 @@ describe("Transaction", () => {
     const tx = newLog2Log().beginTransaction();
     tx.set<"counter">({ type: "counter", id: "b", count: 3 });
 
-    const { sets, updates } = tx.getChanges();
+    const { blindSets: sets, updates } = tx.getChanges();
     assert.strictEqual(updates.size, 0);
     assert.deepEqual(sets.get("counter", "b") as Counter, {
       type: "counter",
@@ -226,7 +235,7 @@ describe("Transaction", () => {
       count: 1,
     });
     // Even with no further changes, the initialValue is committed as a set.
-    const { sets, updates } = tx.getChanges();
+    const { blindSets: sets, updates } = tx.getChanges();
     assert.strictEqual(updates.size, 0);
     assert.deepEqual(sets.get("counter", "new") as Counter, {
       type: "counter",
@@ -254,7 +263,7 @@ describe("Transaction", () => {
       count: 5,
     });
 
-    const { sets, updates } = tx.getChanges();
+    const { blindSets: sets, updates } = tx.getChanges();
     assert.strictEqual(updates.size, 0);
     assert.deepEqual(sets.get("counter", "new") as Counter, {
       type: "counter",
@@ -269,7 +278,7 @@ describe("Transaction", () => {
     tx.set<"counter">({ type: "counter", id: "b", count: 3 });
     tx.getMutable("counter", "b")!.add(2);
 
-    const { sets, updates } = tx.getChanges();
+    const { blindSets: sets, updates } = tx.getChanges();
     assert.strictEqual(updates.size, 0);
     assert.deepEqual(sets.get("counter", "b") as Counter, {
       type: "counter",
@@ -290,7 +299,7 @@ describe("Transaction", () => {
       count: 0,
     });
 
-    const { sets, updates } = tx.getChanges();
+    const { blindSets: sets, updates } = tx.getChanges();
     assert.strictEqual(updates.size, 0);
     assert.deepEqual(sets.get("counter", "a") as Counter, {
       type: "counter",

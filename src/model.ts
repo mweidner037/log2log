@@ -7,10 +7,12 @@ export interface BaseValue<K = string> {
 
 export interface MutableValue<V, U> {
   /**
-   * Returns updates describing all changes to this MutableValue
-   * since it was created.
+   * Returns the current state as an immutable value and an array of all updates
+   * since this MutableValue was created.
+   *
+   * Called once when this is done being used.
    */
-  _getUpdates(): U[];
+  _finish(): [value: V, updates: U[]];
   /**
    * Converts the current state of this MutableValue to an immutable value for the model type.
    */

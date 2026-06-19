@@ -21,11 +21,28 @@ export class Log2Log<TTM extends BaseTypeToModel> {
   beginTransaction(): TransactionImpl<TTM> {
     return new TransactionImpl(this.typeToModel, this.store);
   }
+
+  /**
+   * Applies a single mutation.
+   *
+   * If the mutation throws, the error propagates and no changes occur.
+   */
+  applyMutation(mutation: MutationCallback): void {}
+
+  /**
+   * Applies a sequence of mutations, updating the store once at the end.
+   *
+   * Any mutations that throw become no-ops.
+   *
+   * @returns A boolean for each mutation indicating whether it succeeded
+   * (did not throw).
+   */
+  applyMutations(mutations: MutationCallback[]): boolean[] {}
 }
 
 interface TransactionChanges<TTM extends BaseTypeToModel> {
-  sets: BiMap<TTM, BaseValue>;
-  updates: BiMap<TTM, object[]>;
+  blindSets: BiMap<TTM, BaseValue>;
+  updates: BiMap<TTM, [value: BaseValue, updates: object[]]>;
 }
 
 /**
@@ -160,25 +177,25 @@ class TransactionImpl<TTM extends BaseTypeToModel> implements Transaction<TTM> {
    * and updates (lists of update objects) for changes to mutable values.
    */
   getChanges(): TransactionChanges<TTM> {
-    const sets = new BiMap<TTM, BaseValue>();
-    const updates = new BiMap<TTM, object[]>();
+    const blindSets = new BiMap<TTM, BaseValue>();
+    const updates = new BiMap<TTM, [value: BaseValue, updates: object[]]>();
 
     for (const [type, id, value] of this.blindSets.entries()) {
-      sets.set(type, id, value);
+      blindSets.set(type, id, value);
     }
 
     for (const [type, id, entry] of this.mutables.entries()) {
       if (entry.fromStore) {
         // An existing value was mutated: commit the changes as updates.
-        const u = entry.mutable._getUpdates();
-        if (u.length > 0) updates.set(type, id, u);
+        const change = entry.mutable._finish();
+        if (change[1].length > 0) updates.set(type, id, change);
       } else {
         // A new value (set or created from initialValue): commit the final
         // value as a blind set, even if no further changes were made.
-        sets.set(type, id, entry.mutable._toImmutable());
+        blindSets.set(type, id, entry.mutable._toImmutable());
       }
     }
 
-    return { sets, updates };
+    return { blindSets, updates };
   }
 }
