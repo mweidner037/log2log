@@ -14,9 +14,9 @@ export type Json =
   | { [key: string]: Json };
 
 /** A JSON object (the non-array, non-primitive case of {@link Json}). */
-export type JsonObject = { [key: string]: Json };
+type JsonObject = { [key: string]: Json };
 /** A JSON array. */
-export type JsonArray = Json[];
+type JsonArray = Json[];
 /** A JSON value that other values can nest inside: an object or array. */
 type JsonContainer = JsonObject | JsonArray;
 
@@ -24,33 +24,16 @@ function isContainer(value: Json): value is JsonContainer {
   return typeof value === "object" && value !== null;
 }
 
-/** Returns a deep copy of a JSON value. */
-function deepClone<T extends Json>(value: T): T {
-  if (Array.isArray(value)) {
-    return value.map((element) => deepClone(element)) as T;
-  }
-  if (isContainer(value)) {
-    const out: JsonObject = {};
-    for (const key of Object.keys(value)) {
-      out[key] = deepClone(value[key]);
-    }
-    return out as T;
-  }
-  return value;
-}
-
 /* -------------------------------------------------------------------------- */
 /* JSON patches (the update type).                                            */
 /* -------------------------------------------------------------------------- */
 
 /**
- * A single change to a JSON value, loosely following JSON Patch (RFC 6902).
+ * A single change to a JSON value, using JSON Patch format (RFC 6902)
+ * extended with a "splice" operation for bulk Array adds/removes.
  *
  * Each `path` is a JSON Pointer (RFC 6901): "" for the root, or "/" followed by
  * "/"-separated, escaped path segments (e.g. "/items/0/name").
- *
- * In addition to the standard "add", "remove", and "replace" ops, we include a
- * "splice" op for efficient array edits, mirroring `Array.prototype.splice`.
  */
 export type JsonPatch =
   | { readonly op: "add"; readonly path: string; readonly value: Json }
@@ -103,16 +86,25 @@ class JsonTracker {
   readonly patches: JsonPatch[] = [];
   /** Cache of proxies, keyed by their backing (live) JSON container. */
   private readonly proxyCache = new WeakMap<JsonContainer, object>();
-  /** Maps each non-root container to its parent container. */
-  private readonly parentMap = new WeakMap<JsonContainer, JsonContainer>();
+  /** Maps each non-root container to its parent container and key within it. */
+  private readonly parentMap = new WeakMap<JsonContainer, ParentLink>();
 
   constructor(readonly root: JsonObject) {}
 
-  /** Returns the (cached) proxy for `target`, recording its parent. */
-  proxyFor(target: JsonContainer, parent: JsonContainer | null): object {
+  /**
+   * Returns the (cached) proxy for `target`, recording the `parent` and `key`
+   * under which it lives so that {@link pointerOf} can find it again. For an
+   * object parent `key` is a property name; for an array parent it is the index
+   * at access time (a hint that may go stale after reorderings).
+   */
+  proxyFor(
+    target: JsonContainer,
+    parent: JsonContainer | null,
+    key: string | number
+  ): object {
     let proxy = this.proxyCache.get(target);
     if (proxy === undefined) {
-      if (parent !== null) this.parentMap.set(target, parent);
+      if (parent !== null) this.parentMap.set(target, { parent, key });
       proxy = Array.isArray(target)
         ? new Proxy(target, new ArrayHandler(this, target))
         : new Proxy(target, new ObjectHandler(this, target));
@@ -129,26 +121,29 @@ class JsonTracker {
   /** Returns the current JSON Pointer to `target` from the root. */
   pointerOf(target: JsonContainer): string {
     if (target === this.root) return "";
-    const segments: string[] = [];
+    const segmentsRev: string[] = [];
     let current: JsonContainer = target;
     while (current !== this.root) {
-      const parent = this.parentMap.get(current);
-      if (parent === undefined) break;
-      segments.unshift(keyInParent(parent, current));
+      const link = this.parentMap.get(current);
+      if (link === undefined) break;
+      const { parent } = link;
+      if (Array.isArray(parent) && parent[link.key as number] !== current) {
+        // The cached index went stale (e.g. after a splice or sort). Repair it;
+        // the lookup is then O(1) again until the next reordering.
+        link.key = parent.indexOf(current);
+      }
+      segmentsRev.push(String(link.key));
       current = parent;
     }
-    return "/" + segments.map(escapeSegment).join("/");
+    return "/" + segmentsRev.reverse().map(escapeSegment).join("/");
   }
 }
 
-/** Finds the key under which `child` is stored in `parent`. */
-function keyInParent(parent: JsonContainer, child: JsonContainer): string {
-  if (Array.isArray(parent)) return String(parent.indexOf(child));
-  for (const key of Object.keys(parent)) {
-    if (parent[key] === child) return key;
-  }
-  // Should not happen for a live child.
-  return "";
+/** A non-root container's location: its parent and the key it lives under. */
+interface ParentLink {
+  readonly parent: JsonContainer;
+  /** A property name (object parent) or array index hint (array parent). */
+  key: string | number;
 }
 
 /** Parses an array index, or returns undefined if `key` is not one. */
@@ -188,19 +183,19 @@ class ObjectHandler implements ProxyHandler<JsonObject> {
       return Reflect.get(target, key) as unknown;
     }
     const value = target[key];
-    if (isContainer(value)) return this.tracker.proxyFor(value, target);
+    if (isContainer(value)) return this.tracker.proxyFor(value, target, key);
     return value;
   }
 
   set(target: JsonObject, key: string | symbol, value: unknown): boolean {
     if (typeof key === "symbol") return Reflect.set(target, key, value);
     const existed = Object.prototype.hasOwnProperty.call(target, key);
-    const stored = deepClone(value as Json);
+    const stored = structuredClone(value as Json);
     target[key] = stored;
     this.tracker.patches.push({
       op: existed ? "replace" : "add",
       path: appendPointer(this.base(), key),
-      value: deepClone(stored),
+      value: structuredClone(stored),
     });
     return true;
   }
@@ -237,20 +232,20 @@ class ArrayHandler implements ProxyHandler<JsonArray> {
     this.tracker.patches.push({
       op: "replace",
       path: this.base(),
-      value: deepClone(this.target),
+      value: structuredClone(this.target),
     });
   }
 
   private readonly push = (...items: Json[]): number => {
     const index = this.target.length;
-    const stored = items.map((item) => deepClone(item));
+    const stored = items.map((item) => structuredClone(item));
     this.target.push(...stored);
     this.tracker.patches.push({
       op: "splice",
       path: this.base(),
       index,
       remove: 0,
-      add: stored.map((item) => deepClone(item)),
+      add: stored.map((item) => structuredClone(item)),
     });
     return this.target.length;
   };
@@ -283,14 +278,14 @@ class ArrayHandler implements ProxyHandler<JsonArray> {
   };
 
   private readonly unshift = (...items: Json[]): number => {
-    const stored = items.map((item) => deepClone(item));
+    const stored = items.map((item) => structuredClone(item));
     this.target.unshift(...stored);
     this.tracker.patches.push({
       op: "splice",
       path: this.base(),
       index: 0,
       remove: 0,
-      add: stored.map((item) => deepClone(item)),
+      add: stored.map((item) => structuredClone(item)),
     });
     return this.target.length;
   };
@@ -303,7 +298,7 @@ class ArrayHandler implements ProxyHandler<JsonArray> {
     if (start === undefined) return [];
     const len = this.target.length;
     const index = start < 0 ? Math.max(len + start, 0) : Math.min(start, len);
-    const stored = items.map((item) => deepClone(item));
+    const stored = items.map((item) => structuredClone(item));
     // splice(start) deletes through the end, whereas splice(start, undefined)
     // deletes nothing, so the two cases must be distinguished.
     const removed =
@@ -315,7 +310,7 @@ class ArrayHandler implements ProxyHandler<JsonArray> {
       path: this.base(),
       index,
       remove: removed.length,
-      add: stored.map((item) => deepClone(item)),
+      add: stored.map((item) => structuredClone(item)),
     });
     return removed;
   };
@@ -337,7 +332,7 @@ class ArrayHandler implements ProxyHandler<JsonArray> {
     start?: number,
     end?: number
   ): object => {
-    this.target.fill(deepClone(value), start, end);
+    this.target.fill(structuredClone(value), start, end);
     this.emitReplaceWhole();
     return this.self();
   };
@@ -377,7 +372,8 @@ class ArrayHandler implements ProxyHandler<JsonArray> {
       const index = toIndex(key);
       if (index !== undefined) {
         const value = target[index];
-        if (isContainer(value)) return this.tracker.proxyFor(value, target);
+        if (isContainer(value))
+          return this.tracker.proxyFor(value, target, index);
         return value;
       }
     }
@@ -412,13 +408,13 @@ class ArrayHandler implements ProxyHandler<JsonArray> {
     }
     const index = toIndex(key);
     if (index === undefined) return Reflect.set(target, key, value);
-    const stored = deepClone(value as Json);
+    const stored = structuredClone(value as Json);
     if (index < target.length) {
       target[index] = stored;
       this.tracker.patches.push({
         op: "replace",
         path: appendPointer(this.base(), index),
-        value: deepClone(stored),
+        value: structuredClone(stored),
       });
     } else {
       // Appending at or past the end. Any skipped slots become null holes.
@@ -426,7 +422,7 @@ class ArrayHandler implements ProxyHandler<JsonArray> {
       target[index] = stored;
       const add: Json[] = [];
       for (let i = oldLength; i < index; i++) add.push(null);
-      add.push(deepClone(stored));
+      add.push(structuredClone(stored));
       this.tracker.patches.push({
         op: "splice",
         path: this.base(),
@@ -458,11 +454,14 @@ class ArrayHandler implements ProxyHandler<JsonArray> {
 function finishFn(
   tracker: JsonTracker
 ): () => { value: Json; updates: JsonPatch[] } {
-  return () => ({ value: deepClone(tracker.root), updates: tracker.patches });
+  return () => ({
+    value: structuredClone(tracker.root),
+    updates: tracker.patches,
+  });
 }
 
 function toImmutableFn(tracker: JsonTracker): () => Json {
-  return () => deepClone(tracker.root);
+  return () => structuredClone(tracker.root);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -503,7 +502,7 @@ function applyPatch(root: JsonObject, patch: JsonPatch): void {
     array.splice(
       patch.index,
       patch.remove,
-      ...patch.add.map((v) => deepClone(v))
+      ...patch.add.map((v) => structuredClone(v))
     );
     return;
   }
@@ -515,14 +514,15 @@ function applyPatch(root: JsonObject, patch: JsonPatch): void {
     case "add":
       if (Array.isArray(parent)) {
         const index = last === "-" ? parent.length : Number(last);
-        parent.splice(index, 0, deepClone(patch.value));
+        parent.splice(index, 0, structuredClone(patch.value));
       } else {
-        parent[last] = deepClone(patch.value);
+        parent[last] = structuredClone(patch.value);
       }
       break;
     case "replace":
-      if (Array.isArray(parent)) parent[Number(last)] = deepClone(patch.value);
-      else parent[last] = deepClone(patch.value);
+      if (Array.isArray(parent))
+        parent[Number(last)] = structuredClone(patch.value);
+      else parent[last] = structuredClone(patch.value);
       break;
     case "remove":
       if (Array.isArray(parent)) parent.splice(Number(last), 1);
@@ -543,9 +543,16 @@ function applyPatch(root: JsonObject, patch: JsonPatch): void {
  * the scenes, a tree of {@link Proxy}s records every change as a
  * {@link JsonPatch}, which can later be replayed with `applyUpdates`.
  *
- * The mutable also carries the {@link MutableValue} methods `_finish` and
- * `_toImmutable`; these are not part of the tracked JSON (they do not appear in
- * `Object.keys`, spreads, or `JSON.stringify`).
+ * Limitations:
+ * - Type `T` must have readonly `type` and `id` properties.
+ * - Values must be pure JSON - no classes, Dates, circular references, etc.
+ * - The JSON value must **not** have top-level properties names that start with an underscore.
+ * Those could conflict with internal methods added to MutableValues.
+ * - Objects and arrays inserted into the JSON value are deep-copied,
+ * so the patches don't reflect their future internal changes.
+ *
+ * @typeParam T The mutable value type.
+ * The (immutable) value type is then `Readonly<T>`.
  */
 export function defineJsonModel<T extends BaseValue>(): DefModel<
   Readonly<T>,
@@ -559,13 +566,13 @@ export function defineJsonModel<T extends BaseValue>(): DefModel<
   >({
     toMutable(value) {
       const tracker = new JsonTracker(
-        deepClone(value as unknown as JsonObject)
+        structuredClone(value as unknown as JsonObject)
       );
-      return tracker.proxyFor(tracker.root, null) as unknown as T &
+      return tracker.proxyFor(tracker.root, null, "") as unknown as T &
         MutableValue<Readonly<T>, JsonPatch>;
     },
     applyUpdates(value, updates) {
-      const root = deepClone(value as unknown as JsonObject);
+      const root = structuredClone(value as unknown as JsonObject);
       for (const patch of updates) applyPatch(root, patch);
       return root as unknown as Readonly<T>;
     },
