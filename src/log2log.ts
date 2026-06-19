@@ -1,4 +1,3 @@
-import { BiMap } from "./bi-map";
 import {
   BaseTypeToModel,
   BaseValue,
@@ -9,6 +8,7 @@ import {
 import { MutationCallback } from "./mutation";
 import { SavedState } from "./saved-state";
 import { Transaction } from "./transaction";
+import { BiMap } from "./util/bi-map";
 
 /**
  * An atomic set of changes to the key-value store.
