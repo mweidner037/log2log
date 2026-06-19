@@ -4,7 +4,10 @@ import { describe, it } from "mocha";
 import { ChangeSet, Log2Log } from "../src/log2log";
 import { BaseValue } from "../src/model";
 import { MutationCallback } from "../src/mutation";
-import { ReconciliationClient } from "../src/reconciliation-client";
+import {
+  ClientChangeSet,
+  ReconciliationClient,
+} from "../src/reconciliation-client";
 import { BiMap } from "../src/util/bi-map";
 import {
   Counter,
@@ -28,11 +31,11 @@ function newServer(): Log2Log<TTM> {
 }
 
 function blindVal<V extends BaseValue>(
-  blindSets: BiMap<TTM, BaseValue>,
+  changes: ClientChangeSet<TTM>,
   type: keyof TTM,
   id: string
 ): V | undefined {
-  return blindSets.get(type, id) as V | undefined;
+  return changes.sets.get(type, id) as V | undefined;
 }
 
 const addCounter =
@@ -130,7 +133,8 @@ describe("ReconciliationClient", () => {
       });
       // The mutation was not stored: a later server change does not rerun it.
       const changes = client.applyServerChanges(emptyChangeSet(), []);
-      assert.strictEqual(changes.size, 0);
+      assert.strictEqual(changes.sets.size, 0);
+      assert.strictEqual(changes.deletes.size, 0);
       assert.deepEqual(client.get("counter", "a"), {
         type: "counter",
         id: "a",
@@ -283,6 +287,64 @@ describe("ReconciliationClient", () => {
         id: "r",
         value: "remote",
       });
+    });
+
+    it("reports rolled-back optimistic changes in the returned blind sets", () => {
+      const client = newClient();
+      // This mutation only sets "r" while the counter is below a threshold.
+      const conditionalSet: MutationCallback<TTM> = (tx) => {
+        if (tx.get("counter", "a")!.count < 100) {
+          tx.set<"register">({ type: "register", id: "r", value: "low" });
+        }
+      };
+      client.applyOptimisticMutation("m1", conditionalSet);
+      // Optimistically, "r" is "low".
+      assert.deepEqual(client.get("register", "r"), {
+        type: "register",
+        id: "r",
+        value: "low",
+      });
+
+      // The server bumps the counter past the threshold (not touching "r") and
+      // does not confirm m1.
+      const server = newServer();
+      const { changes } = server.applyMutations([addCounter("a", 200)]);
+      const blindSets = client.applyServerChanges(changes, []);
+
+      // On rerun, m1 no longer sets "r", so the optimistic "r" rolls back to the
+      // server value. That rollback must show up in the returned blind sets, so
+      // a consumer that only applies blindSets stays in sync.
+      assert.deepEqual(client.get("register", "r"), {
+        type: "register",
+        id: "r",
+        value: "initial",
+      });
+      assert.deepEqual(blindVal<Register>(blindSets, "register", "r"), {
+        type: "register",
+        id: "r",
+        value: "initial",
+      });
+    });
+
+    it("deletes an optimistically-created value whose server mutation was a no-op", () => {
+      const client = newClient();
+      // Optimistically create a new counter "b".
+      client.applyOptimisticMutation("m1", (tx) =>
+        tx.set<"counter">({ type: "counter", id: "b", count: 5 })
+      );
+      assert.deepEqual(client.get("counter", "b"), {
+        type: "counter",
+        id: "b",
+        count: 5,
+      });
+
+      // The server processed m1 but its mutation failed there (a no-op), so m1
+      // is confirmed without any server changes. "b" never existed on the
+      // server, so it must be deleted from the optimistic state.
+      const changes = client.applyServerChanges(emptyChangeSet(), ["m1"]);
+      assert.isUndefined(client.get("counter", "b"));
+      assert.strictEqual(changes.sets.size, 0);
+      assert.deepEqual([...changes.deletes.entries()], [["counter", ["b"]]]);
     });
   });
 });
