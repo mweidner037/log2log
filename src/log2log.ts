@@ -1,4 +1,4 @@
-import { BiMap } from "./bi_map";
+import { BiMap } from "./bi-map";
 import {
   BaseTypeToModel,
   BaseValue,
@@ -6,11 +6,16 @@ import {
   MutableValueType,
   ValueType,
 } from "./model";
-import { ValueStore } from "./store";
+import { SavedState } from "./saved-state";
 import { Transaction } from "./transaction";
 
 export class Log2Log<TTM extends BaseTypeToModel> {
-  constructor(readonly typeToModel: TTM, readonly store: ValueStore<TTM>) {}
+  private readonly state = new BiMap<TTM, BaseValue>();
+
+  constructor(
+    readonly typeToModel: TTM,
+    readonly initialState: SavedState<TTM>
+  ) {}
 
   /**
    * Begins a new transaction against the store.
@@ -19,7 +24,7 @@ export class Log2Log<TTM extends BaseTypeToModel> {
    * call {@link TransactionImpl.getChanges} at the end to retrieve them.
    */
   beginTransaction(): TransactionImpl<TTM> {
-    return new TransactionImpl(this.typeToModel, this.store);
+    return new TransactionImpl(this.typeToModel, this.state);
   }
 
   /**
@@ -38,6 +43,20 @@ export class Log2Log<TTM extends BaseTypeToModel> {
    * (did not throw).
    */
   applyMutations(mutations: MutationCallback[]): boolean[] {}
+
+  /**
+   * Returns the current state as a {@link SavedState}, with one array of values
+   * per type (empty for types that have no values).
+   */
+  save(): SavedState<TTM> {
+    const result = {} as SavedState<TTM>;
+    for (const type of Object.keys(this.typeToModel) as (keyof TTM & string)[]) {
+      result[type] = this.state
+        .getInner(type)
+        .map(([, value]) => value) as SavedState<TTM>[keyof TTM & string];
+    }
+    return result;
+  }
 }
 
 interface TransactionChanges<TTM extends BaseTypeToModel> {
@@ -53,11 +72,11 @@ interface MutableEntry {
   mutable: MutableValue<BaseValue, object>;
   /**
    * True if this mutable was derived from a value that already exists in the
-   * store, so its changes should be committed as updates. False if the value
+   * state, so its changes should be committed as updates. False if the value
    * is new to this transaction (created via {@link TransactionImpl.set} or from
    * an initialValue), so it should be committed as a blind set instead.
    */
-  fromStore: boolean;
+  fromState: boolean;
 }
 
 class TransactionImpl<TTM extends BaseTypeToModel> implements Transaction<TTM> {
@@ -74,7 +93,7 @@ class TransactionImpl<TTM extends BaseTypeToModel> implements Transaction<TTM> {
 
   constructor(
     private readonly typeToModel: TTM,
-    private readonly store: ValueStore<TTM>
+    private readonly state: BiMap<TTM, BaseValue>
   ) {}
 
   get<K extends keyof TTM>(type: K, id: string): ValueType<TTM, K> | null {
@@ -90,8 +109,9 @@ class TransactionImpl<TTM extends BaseTypeToModel> implements Transaction<TTM> {
     if (blind !== undefined) {
       return blind as ValueType<TTM, K>;
     }
-    // Otherwise fall through to the store.
-    return this.store.get(type, id);
+    // Otherwise fall through to the state.
+    const stored = this.state.get(t, id);
+    return stored === undefined ? null : (stored as ValueType<TTM, K>);
   }
 
   getAll<K extends keyof TTM>(type: K, ids: string[]): ValueType<TTM, K>[] {
@@ -127,21 +147,21 @@ class TransactionImpl<TTM extends BaseTypeToModel> implements Transaction<TTM> {
 
     // Determine the value to wrap and how it should ultimately be committed.
     let currentValue: BaseValue;
-    let fromStore: boolean;
+    let fromState: boolean;
     const blind = this.blindSets.get(t, id);
     if (blind !== undefined) {
       // A value set earlier in this transaction; it's new, so commit as a set.
       currentValue = blind;
-      fromStore = false;
+      fromState = false;
       this.blindSets.delete(t, id);
     } else {
-      const stored = this.store.get(type, id);
-      if (stored !== null) {
+      const stored = this.state.get(t, id);
+      if (stored !== undefined) {
         currentValue = stored;
-        fromStore = true;
+        fromState = true;
       } else if (initialValue !== undefined) {
         currentValue = initialValue;
-        fromStore = false;
+        fromState = false;
       } else {
         return null;
       }
@@ -149,7 +169,7 @@ class TransactionImpl<TTM extends BaseTypeToModel> implements Transaction<TTM> {
 
     const model = this.typeToModel[t];
     const mutable = model.toMutable(currentValue as ValueType<TTM, K>);
-    this.mutables.set(t, id, { mutable, fromStore });
+    this.mutables.set(t, id, { mutable, fromState });
     return mutable as MutableValueType<TTM, K>;
   }
 
@@ -185,7 +205,7 @@ class TransactionImpl<TTM extends BaseTypeToModel> implements Transaction<TTM> {
     }
 
     for (const [type, id, entry] of this.mutables.entries()) {
-      if (entry.fromStore) {
+      if (entry.fromState) {
         // An existing value was mutated: commit the changes as updates.
         const change = entry.mutable._finish();
         if (change[1].length > 0) updates.set(type, id, change);
