@@ -101,6 +101,12 @@ class JsonTracker {
   private readonly proxyCache = new WeakMap<JsonContainer, object>();
   /** Maps each non-root container to its parent container and key within it. */
   private readonly parentMap = new WeakMap<JsonContainer, ParentLink>();
+  /**
+   * Containers stored live (not deep-copied) by {@link prepareWrite}. Reads of
+   * these return the raw object instead of a proxy, so that the caller's own
+   * reference and the tree stay the same object.
+   */
+  readonly unproxied = new WeakSet<JsonContainer>();
 
   constructor(
     readonly root: JsonObject,
@@ -178,6 +184,89 @@ function toIndex(key: string): number | undefined {
 const FINISH = "__finish";
 const TO_IMMUTABLE = "__toImmutable";
 
+/**
+ * A private key whose getter returns a proxy's backing container. Used to
+ * recognize a value that is already one of our (or another tracker's) proxies,
+ * which therefore may not be reassigned elsewhere in the tree.
+ */
+const BACKING = Symbol("backing");
+
+/**
+ * Returns the backing container of `value` if it is a change-tracking proxy
+ * (revealed by {@link BACKING}), or undefined for any other value.
+ */
+function proxyBacking(value: unknown): JsonContainer | undefined {
+  if (typeof value !== "object" || value === null) return undefined;
+  return (value as Record<symbol, JsonContainer | undefined>)[BACKING];
+}
+
+/**
+ * Prepares `value` for storage at a freshly written location, returning the
+ * object to place in the backing store (`stored`) and the value to record in
+ * the emitted patch (`patch`).
+ *
+ * A plain object or array - one not already part of a tracked tree - is stored
+ * live and flagged in {@link JsonTracker.unproxied}, so that later reads return
+ * the same reference and later internal mutations to it are reflected in both
+ * the backing store and the patch. For such a value `stored` and `patch` are
+ * the same reference, deep-copied only at {@link finishFn}. Primitives are
+ * snapshotted up front.
+ *
+ * Assigning a value that is already proxied (part of this or another tracked
+ * tree) throws, since aliasing one node to two paths cannot be represented as a
+ * JSON patch.
+ */
+function prepareWrite(
+  tracker: JsonTracker,
+  value: unknown
+): { stored: JsonPatchValue; patch: JsonPatchValue } {
+  if (proxyBacking(value) !== undefined) {
+    throw new Error(
+      "Cannot assign a value that is already part of a tracked JSON value; " +
+        "deep-copy it first (e.g. with structuredClone)."
+    );
+  }
+  if (isContainer(value as JsonPatchValue)) {
+    const container = value as JsonContainer;
+    tracker.unproxied.add(container);
+    return { stored: container, patch: container };
+  }
+  const stored = structuredClone(value as JsonPatchValue);
+  return { stored, patch: structuredClone(stored) };
+}
+
+/**
+ * Runs each of `items` through {@link prepareWrite}, returning the values to
+ * store in the backing array (`stored`, in order) and the values to record in
+ * the emitted patch's `add` (in order).
+ */
+function prepareItems(
+  tracker: JsonTracker,
+  items: JsonPatchValue[]
+): { stored: JsonPatchValue[]; add: JsonPatchValue[] } {
+  const stored: JsonPatchValue[] = [];
+  const add: JsonPatchValue[] = [];
+  for (const item of items) {
+    const prepared = prepareWrite(tracker, item);
+    stored.push(prepared.stored);
+    add.push(prepared.patch);
+  }
+  return { stored, add };
+}
+
+/** Normalizes the `[from, to)` range that `Array.prototype.fill` would touch. */
+function fillBounds(
+  len: number,
+  start?: number,
+  end?: number
+): [number, number] {
+  const clamp = (v: number): number =>
+    v < 0 ? Math.max(len + v, 0) : Math.min(v, len);
+  const from = start === undefined ? 0 : clamp(Math.trunc(start));
+  const to = end === undefined ? len : clamp(Math.trunc(end));
+  return [from, to];
+}
+
 class ObjectHandler implements ProxyHandler<JsonObject> {
   constructor(
     private readonly tracker: JsonTracker,
@@ -189,6 +278,7 @@ class ObjectHandler implements ProxyHandler<JsonObject> {
   }
 
   get(target: JsonObject, key: string | symbol): unknown {
+    if (key === BACKING) return target;
     if (typeof key !== "symbol" && target === this.tracker.root) {
       if (key === FINISH) return finishFn(this.tracker);
       if (key === TO_IMMUTABLE) return toImmutableFn(this.tracker);
@@ -200,19 +290,22 @@ class ObjectHandler implements ProxyHandler<JsonObject> {
       return Reflect.get(target, key) as unknown;
     }
     const value = target[key];
-    if (isContainer(value)) return this.tracker.proxyFor(value, target, key);
+    if (isContainer(value)) {
+      if (this.tracker.unproxied.has(value)) return value;
+      return this.tracker.proxyFor(value, target, key);
+    }
     return value;
   }
 
   set(target: JsonObject, key: string | symbol, value: unknown): boolean {
     if (typeof key === "symbol") return Reflect.set(target, key, value);
     const existed = Object.prototype.hasOwnProperty.call(target, key);
-    const stored = structuredClone(value as JsonPatchValue);
+    const { stored, patch } = prepareWrite(this.tracker, value);
     target[key] = stored;
     this.tracker.patches.push({
       op: existed ? "replace" : "add",
       path: appendPointer(this.base(), key),
-      value: structuredClone(stored),
+      value: patch,
     });
     return true;
   }
@@ -255,14 +348,14 @@ class ArrayHandler implements ProxyHandler<JsonArray> {
 
   private readonly push = (...items: JsonPatchValue[]): number => {
     const index = this.target.length;
-    const stored = items.map((item) => structuredClone(item));
+    const { stored, add } = prepareItems(this.tracker, items);
     this.target.push(...stored);
     this.tracker.patches.push({
       op: "splice",
       path: this.base(),
       index,
       remove: 0,
-      add: stored.map((item) => structuredClone(item)),
+      add,
     });
     return this.target.length;
   };
@@ -295,14 +388,14 @@ class ArrayHandler implements ProxyHandler<JsonArray> {
   };
 
   private readonly unshift = (...items: JsonPatchValue[]): number => {
-    const stored = items.map((item) => structuredClone(item));
+    const { stored, add } = prepareItems(this.tracker, items);
     this.target.unshift(...stored);
     this.tracker.patches.push({
       op: "splice",
       path: this.base(),
       index: 0,
       remove: 0,
-      add: stored.map((item) => structuredClone(item)),
+      add,
     });
     return this.target.length;
   };
@@ -315,7 +408,7 @@ class ArrayHandler implements ProxyHandler<JsonArray> {
     if (start === undefined) return [];
     const len = this.target.length;
     const index = start < 0 ? Math.max(len + start, 0) : Math.min(start, len);
-    const stored = items.map((item) => structuredClone(item));
+    const { stored, add } = prepareItems(this.tracker, items);
     // splice(start) deletes through the end, whereas splice(start, undefined)
     // deletes nothing, so the two cases must be distinguished.
     const removed =
@@ -327,7 +420,7 @@ class ArrayHandler implements ProxyHandler<JsonArray> {
       path: this.base(),
       index,
       remove: removed.length,
-      add: stored.map((item) => structuredClone(item)),
+      add,
     });
     return removed;
   };
@@ -351,8 +444,21 @@ class ArrayHandler implements ProxyHandler<JsonArray> {
     start?: number,
     end?: number
   ): object => {
-    this.target.fill(structuredClone(value), start, end);
-    this.emitReplaceWhole();
+    const [from, to] = fillBounds(this.target.length, start, end);
+    const { stored, patch } = prepareWrite(this.tracker, value);
+    // Native fill places the same reference in every slot, so mirror that (one
+    // shared `stored`) and emit a replace per filled slot. Each replace records
+    // the same live `patch`, so a later mutation of an inserted object reaches
+    // all of them, and the slots are deep-copied apart only at __finish.
+    this.target.fill(stored, start, end);
+    const base = this.base();
+    for (let i = from; i < to; i++) {
+      this.tracker.patches.push({
+        op: "replace",
+        path: appendPointer(base, i),
+        value: patch,
+      });
+    }
     return this.self();
   };
 
@@ -367,6 +473,7 @@ class ArrayHandler implements ProxyHandler<JsonArray> {
   };
 
   get(target: JsonArray, key: string | symbol): unknown {
+    if (key === BACKING) return target;
     if (typeof key === "string") {
       switch (key) {
         case "push":
@@ -391,8 +498,10 @@ class ArrayHandler implements ProxyHandler<JsonArray> {
       const index = toIndex(key);
       if (index !== undefined) {
         const value = target[index];
-        if (isContainer(value))
+        if (isContainer(value)) {
+          if (this.tracker.unproxied.has(value)) return value;
           return this.tracker.proxyFor(value, target, index);
+        }
         return value;
       }
     }
@@ -427,13 +536,13 @@ class ArrayHandler implements ProxyHandler<JsonArray> {
     }
     const index = toIndex(key);
     if (index === undefined) return Reflect.set(target, key, value);
-    const stored = structuredClone(value as JsonPatchValue);
+    const { stored, patch } = prepareWrite(this.tracker, value);
     if (index < target.length) {
       target[index] = stored;
       this.tracker.patches.push({
         op: "replace",
         path: appendPointer(this.base(), index),
-        value: structuredClone(stored),
+        value: patch,
       });
     } else {
       // Appending at or past the end. Any skipped slots become null holes.
@@ -441,7 +550,7 @@ class ArrayHandler implements ProxyHandler<JsonArray> {
       target[index] = stored;
       const add: JsonPatchValue[] = [];
       for (let i = oldLength; i < index; i++) add.push(null);
-      add.push(structuredClone(stored));
+      add.push(patch);
       this.tracker.patches.push({
         op: "splice",
         path: this.base(),
@@ -470,6 +579,27 @@ class ArrayHandler implements ProxyHandler<JsonArray> {
   }
 }
 
+/**
+ * Returns a copy of `tracker`'s patches with every live (unproxied) value
+ * deep-copied, freezing the patches against later mutation of those values. See
+ * {@link prepareWrite}.
+ */
+function finalizePatches(tracker: JsonTracker): JsonPatchExtended[] {
+  const freeze = (value: JsonPatchValue): JsonPatchValue =>
+    isContainer(value) && tracker.unproxied.has(value)
+      ? structuredClone(value)
+      : value;
+  return tracker.patches.map((patch): JsonPatchExtended => {
+    if (patch.op === "add" || patch.op === "replace") {
+      return { ...patch, value: freeze(patch.value) };
+    }
+    if (patch.op === "splice") {
+      return { ...patch, add: patch.add.map(freeze) };
+    }
+    return patch;
+  });
+}
+
 function finishFn(
   tracker: JsonTracker
 ): () => { value: JsonObject; updates: JsonPatchExtended[] } {
@@ -479,7 +609,7 @@ function finishFn(
   // ensuring that schema errors blow up the mutation instead of future loads.
   return () => ({
     value: tracker.schema.parse(tracker.root) as JsonObject,
-    updates: tracker.patches,
+    updates: finalizePatches(tracker),
   });
 }
 
@@ -584,6 +714,20 @@ export type JsonModelValue<Z extends z.ZodType<BaseValue>> = DeepReadonly<
   JsonModelMutableValue<Z>
 >;
 
+/*
+ * Proxy implementation note:
+ *
+ * A plain object or array inserted into the value - by property/index
+ * assignment (e.g. `map[key] = obj`) or an array method (`push`, `unshift`,
+ * `splice`, `fill`) - is stored live rather than deep-copied: later reads return
+ * the same reference, and later internal mutations to it (through that reference
+ * or the tree) are folded into its insertion patch rather than recorded as
+ * separate patches. This makes patterns like `let v = map[key]; if (!v) { v =
+ * ...; map[key] = v; } v.field = ...` work. (Assigning a value that is already
+ * part of the tree - e.g. one of its own nested proxies - throws, since
+ * aliasing one node to two paths cannot be represented as a patch.)
+ */
+
 /**
  * Defines a {@link DefModel} for a JSON-serializable value type
  * with the given schema.
@@ -599,8 +743,8 @@ export type JsonModelValue<Z extends z.ZodType<BaseValue>> = DeepReadonly<
  * - Values must be pure JSON - no classes, Dates, circular references, etc.
  * - The JSON value must **not** have top-level properties names that start with double-underscore.
  * Those could conflict with internal methods added to MutableValues.
- * -  TODOObjects and arrays inserted into the JSON value are deep-copied,
- * so the patches don't reflect their future internal changes.
+ * - During mutations, object and array values cannot be reassigned within the JSON value,
+ * to prevent aliasing.
  */
 export function defineJsonModel<Z extends z.ZodType<BaseValue>>(
   schema: Z

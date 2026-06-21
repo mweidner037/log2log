@@ -248,4 +248,116 @@ describe("json-model proxy", () => {
       assert.deepEqual(original, newDoc());
     });
   });
+
+  describe("live insertion", () => {
+    it("folds later mutations of an inserted object into its patch", () => {
+      const m = model.toMutable(newDoc());
+      // The get-or-create pattern: read an absent slot, create it, mutate it.
+      let nested = m.meta.nested;
+      assert.isUndefined(nested);
+      nested = { deep: 0 };
+      m.meta.nested = nested;
+      // A read returns the very same reference that was inserted...
+      assert.strictEqual(m.meta.nested, nested);
+      // ...and a later mutation (via either reference) is folded in, not lost.
+      nested.deep = 7;
+      m.meta.nested.deep = 9;
+
+      const { value, updates } = m.__finish();
+      assert.deepEqual(updates, [
+        { op: "add", path: "/meta/nested", value: { deep: 9 } },
+      ]);
+      assert.deepEqual(value.meta.nested, { deep: 9 });
+      // Replaying the updates reproduces the finished value.
+      assert.deepEqual(model.applyUpdates(newDoc(), updates), value);
+    });
+
+    it("folds later mutations of an array element inserted by index", () => {
+      const m = model.toMutable(newDoc());
+      const item = { id: 3, name: "three" };
+      m.items[2] = item;
+      item.name = "THREE";
+      assert.deepEqual(m.__finish().updates, [
+        {
+          op: "splice",
+          path: "/items",
+          index: 2,
+          remove: 0,
+          add: [{ id: 3, name: "THREE" }],
+        },
+      ]);
+    });
+
+    it("folds later mutations of pushed/spliced/unshifted objects", () => {
+      const m = model.toMutable(newDoc());
+      const pushed = { id: 3, name: "three" };
+      m.items.push(pushed);
+      // A read returns the same reference, and a later mutation is folded in.
+      assert.strictEqual(m.items[2], pushed);
+      pushed.name = "THREE";
+
+      const unshifted = { id: 0, name: "zero" };
+      m.items.unshift(unshifted);
+      unshifted.name = "ZERO";
+
+      const spliced = { id: 9, name: "nine" };
+      m.items.splice(1, 0, spliced);
+      spliced.name = "NINE";
+
+      const { value, updates } = m.__finish();
+      assert.deepEqual(value.items, [
+        { id: 0, name: "ZERO" },
+        { id: 9, name: "NINE" },
+        { id: 1, name: "one" },
+        { id: 2, name: "two" },
+        { id: 3, name: "THREE" },
+      ]);
+      assert.deepEqual(model.applyUpdates(newDoc(), updates), value);
+    });
+
+    it("fill places one shared reference and folds its later mutations", () => {
+      const m = model.toMutable(newDoc());
+      const item = { id: 7, name: "seven" };
+      m.items.fill(item);
+      // Both slots are the same inserted reference (as with a native array).
+      assert.strictEqual(m.items[0], item);
+      assert.strictEqual(m.items[1], item);
+      item.name = "SEVEN";
+
+      const { value, updates } = m.__finish();
+      assert.deepEqual(value.items, [
+        { id: 7, name: "SEVEN" },
+        { id: 7, name: "SEVEN" },
+      ]);
+      assert.deepEqual(updates, [
+        { op: "replace", path: "/items/0", value: { id: 7, name: "SEVEN" } },
+        { op: "replace", path: "/items/1", value: { id: 7, name: "SEVEN" } },
+      ]);
+      assert.deepEqual(model.applyUpdates(newDoc(), updates), value);
+    });
+
+    it("the finished patch is frozen against post-finish mutation", () => {
+      const m = model.toMutable(newDoc());
+      const nested = { deep: 1 };
+      m.meta.nested = nested;
+      const { updates } = m.__finish();
+      nested.deep = 100;
+      assert.deepEqual(updates, [
+        { op: "add", path: "/meta/nested", value: { deep: 1 } },
+      ]);
+    });
+
+    it("throws when assigning a value already part of the tree", () => {
+      const m = model.toMutable(newDoc());
+      // Aliasing an existing node (a proxy) would give one node two paths, so
+      // every insertion path rejects it.
+      assert.throws(() => {
+        m.items[0] = m.items[1];
+      }, /already part of a tracked JSON value/);
+      assert.throws(
+        () => m.items.push(m.items[0]),
+        /already part of a tracked/
+      );
+    });
+  });
 });
