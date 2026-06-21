@@ -11,6 +11,9 @@ importers:
       '@types/functional-red-black-tree':
         specifier: ^1.0.6
         version: 1.0.6
+      articulated:
+        specifier: ^1.3.1
+        version: 1.3.1
       functional-red-black-tree:
         specifier: ^1.0.1
         version: 1.0.1
@@ -548,6 +551,9 @@ packages:
   arraybuffer.prototype.slice@1.0.3:
     resolution: {integrity: sha512-bMxMKAjg13EBSVscxTaYA4mRc5t1UAXa2kXiGTNfZ079HIWXEkKmkgFrh/nJqamaLSrXO5H4WFFkPEaLJWbs3A==}
     engines: {node: '>= 0.4'}
+
+  articulated@1.3.1:
+    resolution: {integrity: sha512-g+UZ2KjWZR4qM1xfjF+o7Xto5dXaTRme59+Bz8v2NQVI7s7OydbfNPvOv3bKxvGNF6/dLliaoUopvkCais1BUg==}
 
   assertion-error@1.1.0:
     resolution: {integrity: sha512-jgsaNduz+ndvGyFt3uSuWqvy4lCnIJiovtouQN5JZHOKCS2QuhEdbcQHFhVksz2N2U9hXJo8odG7ETyWlEeuDw==}
@@ -1576,6 +1582,9 @@ packages:
     resolution: {integrity: sha512-UjgapumWlbMhkBgzT7Ykc5YXUT46F0iKu8SGXq0bcwP5dz/h0Plj6enJqjz1Zbq2l5WaqYnrVbwWOWMyF3F47g==}
     engines: {node: '>=0.10.0'}
 
+  sparse-array-rled@2.0.1:
+    resolution: {integrity: sha512-kfJ0KmfahwO4s+dClWfT3HoWou2fNJy+1xOPY9kNr91lum9FYq5Pza7Y1qDx/gmdSsQ3tl5CnFlIP4jnO6xgZQ==}
+
   spawn-wrap@2.0.0:
     resolution: {integrity: sha512-EeajNjfN9zMnULLwhZZQU3GWBoFNkbngTUPfaawT4RkMiviTxcX0qfhVbGey39mfctfDHkWtuecgQ8NJcyQWHg==}
     engines: {node: '>=8'}
@@ -2292,6 +2301,10 @@ snapshots:
       get-intrinsic: 1.2.4
       is-array-buffer: 3.0.4
       is-shared-array-buffer: 1.0.3
+
+  articulated@1.3.1:
+    dependencies:
+      sparse-array-rled: 2.0.1
 
   assertion-error@1.1.0: {}
 
@@ -3447,6 +3460,8 @@ snapshots:
   slash@3.0.0: {}
 
   source-map@0.6.1: {}
+
+  sparse-array-rled@2.0.1: {}
 
   spawn-wrap@2.0.0:
     dependencies:

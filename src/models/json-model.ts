@@ -1,5 +1,5 @@
 import * as z from "zod";
-import { BaseValue, DefModel, MutableValue, defineModel } from "../model";
+import { BaseValue, DefModel, MutableValue } from "../model";
 
 // Based on json-patch-observe by Hai Phan
 // (https://github.com/ken107/jsonpatch-observe/blob/8077cffd9d6f245f537f35c3f0a9bcc75cb01008/src/observe.ts),
@@ -753,7 +753,7 @@ export function defineJsonModel<Z extends z.ZodType<BaseValue>>(
   JsonModelMutableValue<Z> & MutableValue<JsonModelValue<Z>, JsonPatchExtended>,
   JsonPatchExtended
 > {
-  return defineModel({
+  return {
     toMutable(value) {
       const tracker = new JsonTracker(structuredClone(value), schema);
       return tracker.proxyFor(
@@ -774,5 +774,5 @@ export function defineJsonModel<Z extends z.ZodType<BaseValue>>(
     load(json) {
       return schema.parse(json) as JsonModelValue<Z>;
     },
-  });
+  };
 }
