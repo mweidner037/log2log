@@ -1,4 +1,3 @@
-import { ChangeSet } from "../log2log";
 import {
   BaseTypeToModel,
   BaseValue,
@@ -8,6 +7,7 @@ import {
 } from "../model";
 import { Transaction } from "../transaction";
 import { BiMap } from "../util/bi-map";
+import { ChangeSet } from "../util/change-set";
 
 /**
  * A single active mutable value within a transaction.
@@ -156,7 +156,7 @@ export class TransactionImpl<TTM extends BaseTypeToModel>
    */
   getChanges(): ChangeSet<TTM> {
     const blindSets = new BiMap<TTM, BaseValue>();
-    const updates = new BiMap<TTM, { value: BaseValue; updates: object[] }>();
+    const updates = new BiMap<TTM, object[]>();
 
     for (const [type, id, value] of this.blindSets.entries()) {
       blindSets.set(type, id, value);
@@ -166,7 +166,7 @@ export class TransactionImpl<TTM extends BaseTypeToModel>
       if (entry.fromState) {
         // An existing value was mutated: commit the changes as updates.
         const change = entry.mutable.__finish();
-        if (change.updates.length > 0) updates.set(type, id, change);
+        if (change.updates.length > 0) updates.set(type, id, change.updates);
       } else {
         // A new value (set or created from initialValue): commit the final
         // value as a blind set, even if no further changes were made.
@@ -174,6 +174,6 @@ export class TransactionImpl<TTM extends BaseTypeToModel>
       }
     }
 
-    return { blindSets, updates };
+    return new ChangeSet(this.typeToModel, blindSets, updates);
   }
 }

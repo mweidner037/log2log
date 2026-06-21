@@ -1,14 +1,15 @@
 import { assert } from "chai";
 import { describe, it } from "mocha";
 
-import { ChangeSet, Log2Log } from "../src/log2log";
+import { Log2Log } from "../src/log2log";
 import { BaseValue } from "../src/model";
 import { Mutation } from "../src/mutation";
 import {
-  ClientChangeSet,
+  ClientMutationResult,
   ReconciliationClient,
 } from "../src/reconciliation-client";
 import { BiMap } from "../src/util/bi-map";
+import { ChangeSet } from "../src/util/change-set";
 import {
   Counter,
   Register,
@@ -35,14 +36,16 @@ function serverChanges(
   server: Log2Log<TTM>,
   mutation: Mutation<TTM>
 ): ChangeSet<TTM> {
-  const [result] = server.applyMutations([mutation]);
+  const {
+    results: [result],
+  } = server.applyMutations([mutation]);
   assert.isTrue(result.isSuccess);
   if (!result.isSuccess) throw new Error("unreachable");
   return result.changes;
 }
 
 function blindVal<V extends BaseValue>(
-  changes: ClientChangeSet<TTM>,
+  changes: ClientMutationResult<TTM>,
   type: keyof TTM,
   id: string
 ): V | undefined {
@@ -251,6 +254,9 @@ describe("ReconciliationClient", () => {
 
     it("a rerun that throws becomes a no-op but stays pending", () => {
       const client = newClient();
+      // A single authoritative server whose state the client mirrors, so its
+      // update deltas compose against the client's server state.
+      const server = newServer();
       // This mutation throws if the counter is already large.
       const cautiousAdd: Mutation<TTM>["apply"] = (tx) => {
         const current = tx.get("counter", "a")!;
@@ -265,8 +271,7 @@ describe("ReconciliationClient", () => {
       });
 
       // Server jumps the counter to 200; the rerun throws and is skipped.
-      const big = newServer();
-      const bigChanges = serverChanges(big, mut(addCounter("a", 190)));
+      const bigChanges = serverChanges(server, mut(addCounter("a", 190)));
       client.applyServerChanges(bigChanges, []);
       assert.deepEqual(client.get("counter", "a"), {
         type: "counter",
@@ -274,10 +279,9 @@ describe("ReconciliationClient", () => {
         count: 200,
       });
 
-      // Later the server brings it back down; the still-pending mutation now
-      // succeeds on rerun.
-      const small = newServer();
-      const smallChanges = serverChanges(small, mut(addCounter("a", 40)));
+      // Later the server brings it back down to 50; the still-pending mutation
+      // now succeeds on rerun.
+      const smallChanges = serverChanges(server, mut(addCounter("a", -150)));
       client.applyServerChanges(smallChanges, []);
       assert.deepEqual(client.get("counter", "a"), {
         type: "counter",
@@ -369,8 +373,9 @@ describe("ReconciliationClient", () => {
 
 /** An empty ChangeSet, for server messages that confirm without state changes. */
 function emptyChangeSet(): ChangeSet<TTM> {
-  return {
-    blindSets: new BiMap<TTM, BaseValue>(),
-    updates: new BiMap<TTM, { value: BaseValue; updates: object[] }>(),
-  };
+  return new ChangeSet(
+    typeToModel,
+    new BiMap<TTM, BaseValue>(),
+    new BiMap<TTM, object[]>()
+  );
 }

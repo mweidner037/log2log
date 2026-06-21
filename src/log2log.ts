@@ -5,14 +5,27 @@ import { SavedState } from "./saved-state";
 import { BiMap } from "./util/bi-map";
 import { ChangeSet } from "./util/change-set";
 
-export type { ChangeSet };
-
 export type ApplyMutationResult<TTM extends BaseTypeToModel> =
   | {
       isSuccess: true;
       changes: ChangeSet<TTM>;
     }
   | { isSuccess: false; error: unknown };
+
+/**
+ * The result of {@link Log2Log.applyMutations}: the per-mutation results plus
+ * the final value of every changed (set or updated) key, accumulated across all
+ * mutations.
+ */
+export interface ServerMutationsResult<TTM extends BaseTypeToModel> {
+  results: ApplyMutationResult<TTM>[];
+  /**
+   * The final value of each key that was set or updated by some mutation. Since
+   * a {@link ChangeSet}'s updates record only their update objects, this is how
+   * to recover updated keys' resulting values.
+   */
+  allSets: BiMap<TTM, BaseValue>;
+}
 
 /**
  * Converts a log of mutations into a log of key-value store changes.
@@ -49,8 +62,9 @@ export class Log2Log<TTM extends BaseTypeToModel> {
    *
    * Any mutations that throw become no-ops.
    */
-  applyMutations(mutations: Mutation<TTM>[]): ApplyMutationResult<TTM>[] {
+  applyMutations(mutations: Mutation<TTM>[]): ServerMutationsResult<TTM> {
     const results: ApplyMutationResult<TTM>[] = [];
+    const allSets = new BiMap<TTM, BaseValue>();
 
     for (const mutation of mutations) {
       const transaction = new TransactionImpl(this.typeToModel, this.state);
@@ -65,19 +79,26 @@ export class Log2Log<TTM extends BaseTypeToModel> {
       }
 
       // The mutation succeeded. Apply its changes to this.state so that the
-      // next mutation sees them, and report them as this mutation's result.
+      // next mutation sees them, recording each key's final value in allSets,
+      // and report the changes as this mutation's result.
       const changes = transaction.getChanges();
       for (const [type, id, value] of changes.blindSets.entries()) {
         this.state.set(type, id, value);
+        allSets.set(type, id, value);
       }
-      for (const [type, id, update] of changes.updates.entries()) {
-        this.state.set(type, id, update.value);
+      for (const [type, id, valueUpdates] of changes.updates.entries()) {
+        // Updates only target existing values, so the prior value is present.
+        const prev = this.state.get(type, id);
+        if (prev === undefined) continue;
+        const value = this.typeToModel[type].applyUpdates(prev, valueUpdates);
+        this.state.set(type, id, value);
+        allSets.set(type, id, value);
       }
 
       results.push({ isSuccess: true, changes });
     }
 
-    return results;
+    return { results, allSets };
   }
 
   /**

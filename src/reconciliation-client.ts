@@ -1,9 +1,9 @@
 import { TransactionImpl } from "./internal/transaction-impl";
-import { ChangeSet } from "./log2log";
 import { BaseTypeToModel, BaseValue, ValueType } from "./model";
 import { Mutation } from "./mutation";
 import { SavedState } from "./saved-state";
 import { BiMap } from "./util/bi-map";
+import { ChangeSet } from "./util/change-set";
 import { PersistentBiMap } from "./util/persistent-bi-map";
 
 /**
@@ -15,7 +15,7 @@ import { PersistentBiMap } from "./util/persistent-bi-map";
  * mutation later fails (becoming a no-op), so the optimistically-created value
  * must be deleted when that mutation is confirmed.
  */
-export interface ClientChangeSet<TTM extends BaseTypeToModel> {
+export interface ClientMutationResult<TTM extends BaseTypeToModel> {
   /**
    * All values set directly, including new values.
    */
@@ -104,7 +104,7 @@ export class ReconciliationClient<TTM extends BaseTypeToModel> {
    * @returns The changes to the current (optimistic) state. A mutation can only
    * set values (never delete), so the result has no deletions.
    */
-  applyOptimisticMutation(mutation: Mutation<TTM>): ClientChangeSet<TTM> {
+  applyOptimisticMutation(mutation: Mutation<TTM>): ClientMutationResult<TTM> {
     // Run the mutation on top of the current optimistic state. If it throws,
     // the error propagates here before we touch any state, so this is a no-op.
     const transaction = new TransactionImpl(
@@ -143,7 +143,7 @@ export class ReconciliationClient<TTM extends BaseTypeToModel> {
   applyServerChanges(
     changeSet: ChangeSet<TTM>,
     confirmedMutationIds: string[]
-  ): ClientChangeSet<TTM> {
+  ): ClientMutationResult<TTM> {
     // Confirmed mutations are now incorporated into the server state, so they
     // should no longer be rerun.
     for (const id of confirmedMutationIds) {
@@ -224,9 +224,14 @@ export class ReconciliationClient<TTM extends BaseTypeToModel> {
       result = result.set(type, id, value);
       for (const acc of accumulators) acc.set(type, id, value);
     }
-    for (const [type, id, update] of changes.updates.entries()) {
-      result = result.set(type, id, update.value);
-      for (const acc of accumulators) acc.set(type, id, update.value);
+    for (const [type, id, valueUpdates] of changes.updates.entries()) {
+      // The ChangeSet records only the update objects, so recover the final
+      // value by applying them to the current value.
+      const prev = result.get(type, id);
+      if (prev === undefined) continue;
+      const value = this.typeToModel[type].applyUpdates(prev, valueUpdates);
+      result = result.set(type, id, value);
+      for (const acc of accumulators) acc.set(type, id, value);
     }
     return result;
   }

@@ -1,7 +1,8 @@
 import { assert } from "chai";
 import { describe, it } from "mocha";
 
-import { ApplyMutationResult, ChangeSet, Log2Log } from "../src/log2log";
+import { ApplyMutationResult, Log2Log } from "../src/log2log";
+import { ChangeSet } from "../src/util/change-set";
 import { BaseValue } from "../src/model";
 import { Mutation } from "../src/mutation";
 import {
@@ -52,14 +53,12 @@ function findSet<V extends BaseValue>(
   return changes.blindSets.get(type, id) as V | undefined;
 }
 
-function findUpdate<V extends BaseValue>(
+function findUpdate(
   changes: ChangeSet<TTM>,
   type: keyof TTM,
   id: string
-): { value: V; updates: object[] } | undefined {
-  return changes.updates.get(type, id) as
-    | { value: V; updates: object[] }
-    | undefined;
+): object[] | undefined {
+  return changes.updates.get(type, id);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -81,7 +80,10 @@ describe("applyMutations", () => {
   });
 
   it("reports updates for mutated existing values", () => {
-    const [result] = newLog2Log().applyMutations([
+    const {
+      results: [result],
+      allSets,
+    } = newLog2Log().applyMutations([
       mut((tx) => {
         tx.getMutable("counter", "a")!.add(7);
         tx.getMutable("register", "r")!.setValue("hello");
@@ -90,25 +92,28 @@ describe("applyMutations", () => {
     const changes = expectSuccess(result);
     assert.strictEqual(changes.blindSets.size, 0);
 
-    const counterUpdate = findUpdate<Counter>(changes, "counter", "a")!;
-    assert.deepEqual(counterUpdate.value, {
+    // The ChangeSet records the updates; the final values come from allSets.
+    assert.deepEqual(findUpdate(changes, "counter", "a"), [{ delta: 7 }]);
+    assert.deepEqual(allSets.get("counter", "a") as Counter, {
       type: "counter",
       id: "a",
       count: 17,
     });
-    assert.deepEqual(counterUpdate.updates, [{ delta: 7 }]);
 
-    const registerUpdate = findUpdate<Register>(changes, "register", "r")!;
-    assert.deepEqual(registerUpdate.value, {
+    assert.deepEqual(findUpdate(changes, "register", "r"), [
+      { value: "hello" },
+    ]);
+    assert.deepEqual(allSets.get("register", "r") as Register, {
       type: "register",
       id: "r",
       value: "hello",
     });
-    assert.deepEqual(registerUpdate.updates, [{ value: "hello" }]);
   });
 
   it("omits mutables that were touched but not changed", () => {
-    const [result] = newLog2Log().applyMutations([
+    const {
+      results: [result],
+    } = newLog2Log().applyMutations([
       mut((tx) => {
         tx.getMutable("counter", "a");
       }),
@@ -119,7 +124,9 @@ describe("applyMutations", () => {
   });
 
   it("reports set values as blind sets", () => {
-    const [result] = newLog2Log().applyMutations([
+    const {
+      results: [result],
+    } = newLog2Log().applyMutations([
       mut((tx) => tx.set<"counter">({ type: "counter", id: "b", count: 3 })),
     ]);
     const changes = expectSuccess(result);
@@ -132,7 +139,9 @@ describe("applyMutations", () => {
   });
 
   it("getMutable with initialValue creates a new value, committed as a set", () => {
-    const [result] = newLog2Log().applyMutations([
+    const {
+      results: [result],
+    } = newLog2Log().applyMutations([
       mut(
         (tx) =>
           void tx.getMutable("counter", "new", {
@@ -152,7 +161,10 @@ describe("applyMutations", () => {
   });
 
   it("a value created in one mutation is visible to later mutations", () => {
-    const [first, second] = newLog2Log().applyMutations([
+    const {
+      results: [first, second],
+      allSets,
+    } = newLog2Log().applyMutations([
       mut((tx) => tx.set<"counter">({ type: "counter", id: "b", count: 3 })),
       mut((tx) => {
         // 'b' is now in the state, so it reads as an existing value.
@@ -173,14 +185,21 @@ describe("applyMutations", () => {
     });
     // The second mutation sees 'b' as existing and reports its own update.
     const secondChanges = expectSuccess(second);
-    const update = findUpdate<Counter>(secondChanges, "counter", "b")!;
-    assert.deepEqual(update.value, { type: "counter", id: "b", count: 5 });
-    assert.deepEqual(update.updates, [{ delta: 2 }]);
+    assert.deepEqual(findUpdate(secondChanges, "counter", "b"), [{ delta: 2 }]);
+    // The accumulated final value reflects both mutations: 3 + 2 = 5.
+    assert.deepEqual(allSets.get("counter", "b") as Counter, {
+      type: "counter",
+      id: "b",
+      count: 5,
+    });
   });
 
   it("a failed mutation is reported as a failure and does not affect state", () => {
     const boom = new Error("boom");
-    const [first, second, third] = newLog2Log().applyMutations([
+    const {
+      results: [first, second, third],
+      allSets,
+    } = newLog2Log().applyMutations([
       mut((tx) => tx.getMutable("counter", "a")!.add(5)),
       mut(() => {
         throw boom;
@@ -190,23 +209,15 @@ describe("applyMutations", () => {
     // The failed mutation is reported as a failure carrying its error.
     assert.strictEqual(expectError(second), boom);
     // The surrounding mutations succeed, and the failed one did not disturb the
-    // state seen by the later mutation: 'a' goes 10 -> 15 -> 18.
-    const firstUpdate = findUpdate<Counter>(
-      expectSuccess(first),
-      "counter",
-      "a"
-    )!;
-    assert.deepEqual(firstUpdate.value, {
-      type: "counter",
-      id: "a",
-      count: 15,
-    });
-    const thirdUpdate = findUpdate<Counter>(
-      expectSuccess(third),
-      "counter",
-      "a"
-    )!;
-    assert.deepEqual(thirdUpdate.value, {
+    // state seen by the later mutation: 'a' goes 10 -> 15 -> 18. Each mutation
+    // records its own delta, and allSets holds the final accumulated value.
+    assert.deepEqual(findUpdate(expectSuccess(first), "counter", "a"), [
+      { delta: 5 },
+    ]);
+    assert.deepEqual(findUpdate(expectSuccess(third), "counter", "a"), [
+      { delta: 3 },
+    ]);
+    assert.deepEqual(allSets.get("counter", "a") as Counter, {
       type: "counter",
       id: "a",
       count: 18,
