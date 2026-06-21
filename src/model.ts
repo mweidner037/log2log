@@ -12,11 +12,11 @@ export interface MutableValue<V, U> {
    *
    * Called once when this is done being used.
    */
-  _finish(): { value: V; updates: U[] };
+  __finish(): { value: V; updates: U[] };
   /**
    * Converts the current state of this MutableValue to an immutable value for the model type.
    */
-  _toImmutable(): V;
+  __toImmutable(): V;
 }
 
 export interface DefModel<

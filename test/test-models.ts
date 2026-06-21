@@ -24,13 +24,13 @@ export class CounterMutable implements MutableValue<Counter, CounterUpdate> {
     this.pending += delta;
   }
 
-  _finish(): { value: Counter; updates: CounterUpdate[] } {
+  __finish(): { value: Counter; updates: CounterUpdate[] } {
     return {
-      value: this._toImmutable(),
+      value: this.__toImmutable(),
       updates: this.pending !== 0 ? [{ delta: this.pending }] : [],
     };
   }
-  _toImmutable(): Counter {
+  __toImmutable(): Counter {
     return { ...this.base, count: this.base.count + this.pending };
   }
 }
@@ -55,13 +55,13 @@ export class RegisterMutable implements MutableValue<Register, RegisterUpdate> {
     this.changed = true;
   }
 
-  _finish(): { value: Register; updates: RegisterUpdate[] } {
+  __finish(): { value: Register; updates: RegisterUpdate[] } {
     return {
       value: this.current,
       updates: this.changed ? [{ value: this.current.value }] : [],
     };
   }
-  _toImmutable(): Register {
+  __toImmutable(): Register {
     return this.current;
   }
 }

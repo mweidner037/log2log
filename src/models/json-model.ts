@@ -175,8 +175,8 @@ function toIndex(key: string): number | undefined {
  * intercepted by {@link ObjectHandler} on the root only; a root JSON object
  * with conflicting property names would shadow them.
  */
-const FINISH = "_finish";
-const TO_IMMUTABLE = "_toImmutable";
+const FINISH = "__finish";
+const TO_IMMUTABLE = "__toImmutable";
 
 class ObjectHandler implements ProxyHandler<JsonObject> {
   constructor(
@@ -597,7 +597,7 @@ export type JsonModelValue<Z extends z.ZodType<BaseValue>> = DeepReadonly<
  * - The schema must be an object that includes properties
  * `type: z.literal(<literal type>)` and `id: z.string()`.
  * - Values must be pure JSON - no classes, Dates, circular references, etc.
- * - The JSON value must **not** have top-level properties names that start with an underscore. (TODO: change to double underscore?)
+ * - The JSON value must **not** have top-level properties names that start with double-underscore.
  * Those could conflict with internal methods added to MutableValues.
  * -  TODOObjects and arrays inserted into the JSON value are deep-copied,
  * so the patches don't reflect their future internal changes.

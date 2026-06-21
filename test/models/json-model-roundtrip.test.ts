@@ -57,14 +57,14 @@ function roundtrip(
   const original = newDoc();
   const m = docModel.toMutable(original);
   mutate(m);
-  const { value, updates } = m._finish();
+  const { value, updates } = m.__finish();
 
   // Replaying the updates reproduces the final value.
   const replayed = docModel.applyUpdates(newDoc(), updates);
   assert.deepEqual(
     replayed,
     value,
-    "applyUpdates did not reproduce _finish().value"
+    "applyUpdates did not reproduce __finish().value"
   );
   // The original value is never mutated.
   assert.deepEqual(original, newDoc(), "the input value was mutated");

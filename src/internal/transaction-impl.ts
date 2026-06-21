@@ -60,7 +60,7 @@ export class TransactionImpl<TTM extends BaseTypeToModel>
     // A mutable's changes show up for future reads.
     const entry = this.mutables.get(t, id);
     if (entry !== undefined) {
-      return entry.mutable._toImmutable() as ValueType<TTM, K>;
+      return entry.mutable.__toImmutable() as ValueType<TTM, K>;
     }
     // A blind set shows up for future reads.
     const blind = this.blindSets.get(t, id);
@@ -165,12 +165,12 @@ export class TransactionImpl<TTM extends BaseTypeToModel>
     for (const [type, id, entry] of this.mutables.entries()) {
       if (entry.fromState) {
         // An existing value was mutated: commit the changes as updates.
-        const change = entry.mutable._finish();
+        const change = entry.mutable.__finish();
         if (change.updates.length > 0) updates.set(type, id, change);
       } else {
         // A new value (set or created from initialValue): commit the final
         // value as a blind set, even if no further changes were made.
-        blindSets.set(type, id, entry.mutable._toImmutable());
+        blindSets.set(type, id, entry.mutable.__toImmutable());
       }
     }
 
