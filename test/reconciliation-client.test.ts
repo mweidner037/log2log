@@ -30,6 +30,17 @@ function newServer(): Log2Log<TTM> {
   return new Log2Log(typeToModel, newInitialState());
 }
 
+/** Applies a single mutation to a server and returns its resulting ChangeSet. */
+function serverChanges(
+  server: Log2Log<TTM>,
+  mutation: Mutation<TTM>
+): ChangeSet<TTM> {
+  const [result] = server.applyMutations([mutation]);
+  assert.isTrue(result.isSuccess);
+  if (!result.isSuccess) throw new Error("unreachable");
+  return result.changes;
+}
+
 function blindVal<V extends BaseValue>(
   changes: ClientChangeSet<TTM>,
   type: keyof TTM,
@@ -171,7 +182,7 @@ describe("ReconciliationClient", () => {
 
       // The server applies the same mutation and reports the ChangeSet.
       const server = newServer();
-      const { changes } = server.applyMutations([mut(addCounter("a", 5))]);
+      const changes = serverChanges(server, mut(addCounter("a", 5)));
 
       const blindSets = client.applyServerChanges(changes, ["m1"]);
       // The optimistic state matches the server state: count 15, applied once.
@@ -189,9 +200,7 @@ describe("ReconciliationClient", () => {
       // A subsequent server change does not rerun the confirmed mutation.
       const server2 = newServer();
       server2.applyMutations([mut(addCounter("a", 5))]);
-      const { changes: changes2 } = server2.applyMutations([
-        mut(addCounter("a", 1)),
-      ]);
+      const changes2 = serverChanges(server2, mut(addCounter("a", 1)));
       client.applyServerChanges(changes2, []);
       assert.deepEqual(client.get("counter", "a"), {
         type: "counter",
@@ -206,7 +215,7 @@ describe("ReconciliationClient", () => {
 
       // A different client's mutation reaches the server first: a -> 110.
       const server = newServer();
-      const { changes } = server.applyMutations([mut(addCounter("a", 100))]);
+      const changes = serverChanges(server, mut(addCounter("a", 100)));
 
       const blindSets = client.applyServerChanges(changes, []);
       // Server state is 110; m1 is rerun on top of it: 115.
@@ -229,7 +238,7 @@ describe("ReconciliationClient", () => {
 
       // A concurrent server change to an unrelated value.
       const server = newServer();
-      const { changes } = server.applyMutations([mut(addCounter("a", 1))]);
+      const changes = serverChanges(server, mut(addCounter("a", 1)));
 
       client.applyServerChanges(changes, []);
       // Both reruns apply in order, so the last writer ("second") wins.
@@ -257,9 +266,7 @@ describe("ReconciliationClient", () => {
 
       // Server jumps the counter to 200; the rerun throws and is skipped.
       const big = newServer();
-      const { changes: bigChanges } = big.applyMutations([
-        mut(addCounter("a", 190)),
-      ]);
+      const bigChanges = serverChanges(big, mut(addCounter("a", 190)));
       client.applyServerChanges(bigChanges, []);
       assert.deepEqual(client.get("counter", "a"), {
         type: "counter",
@@ -270,9 +277,7 @@ describe("ReconciliationClient", () => {
       // Later the server brings it back down; the still-pending mutation now
       // succeeds on rerun.
       const small = newServer();
-      const { changes: smallChanges } = small.applyMutations([
-        mut(addCounter("a", 40)),
-      ]);
+      const smallChanges = serverChanges(small, mut(addCounter("a", 40)));
       client.applyServerChanges(smallChanges, []);
       assert.deepEqual(client.get("counter", "a"), {
         type: "counter",
@@ -284,9 +289,7 @@ describe("ReconciliationClient", () => {
     it("applies a server change to a value with no pending mutations", () => {
       const client = newClient();
       const server = newServer();
-      const { changes } = server.applyMutations([
-        mut(setRegister("r", "remote")),
-      ]);
+      const changes = serverChanges(server, mut(setRegister("r", "remote")));
 
       const blindSets = client.applyServerChanges(changes, []);
       assert.deepEqual(client.get("register", "r"), {
@@ -320,7 +323,7 @@ describe("ReconciliationClient", () => {
       // The server bumps the counter past the threshold (not touching "r") and
       // does not confirm m1.
       const server = newServer();
-      const { changes } = server.applyMutations([mut(addCounter("a", 200))]);
+      const changes = serverChanges(server, mut(addCounter("a", 200)));
       const blindSets = client.applyServerChanges(changes, []);
 
       // On rerun, m1 no longer sets "r", so the optimistic "r" rolls back to the

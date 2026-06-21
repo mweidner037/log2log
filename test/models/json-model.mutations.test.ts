@@ -58,7 +58,7 @@ function newState(): SavedState<TTM> {
 describe("json-model via Log2Log", () => {
   it("commits mutations to an existing value as updates", () => {
     const log2log = new Log2Log(typeToModel, newState());
-    const result = log2log.applyMutations([
+    const [result] = log2log.applyMutations([
       {
         id: "m1",
         apply: (tx) => {
@@ -71,7 +71,8 @@ describe("json-model via Log2Log", () => {
       },
     ]);
 
-    assert.strictEqual(result.errors.size, 0);
+    assert.isTrue(result.isSuccess);
+    if (!result.isSuccess) throw new Error("unreachable");
     // The change is described via updates (not a blind set).
     assert.isUndefined(result.changes.blindSets.get("doc", "d1"));
     const update = result.changes.updates.get("doc", "d1");
@@ -94,7 +95,7 @@ describe("json-model via Log2Log", () => {
   it("commits a newly set value as a blind set", () => {
     const log2log = new Log2Log(typeToModel, { doc: [] });
     const fresh = newDoc();
-    const result = log2log.applyMutations([
+    const [result] = log2log.applyMutations([
       {
         id: "m1",
         apply: (tx) => {
@@ -104,7 +105,8 @@ describe("json-model via Log2Log", () => {
       },
     ]);
 
-    assert.strictEqual(result.errors.size, 0);
+    assert.isTrue(result.isSuccess);
+    if (!result.isSuccess) throw new Error("unreachable");
     const blind = result.changes.blindSets.get("doc", "d1") as Doc | undefined;
     assert.isDefined(blind);
     assert.strictEqual(blind!.title, "Brand new");
