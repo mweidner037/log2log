@@ -139,6 +139,14 @@ export class MutableIdListValue<K extends string = string>
   }
 }
 
+/**
+ * Defines a model of the given type whose values are IdListValue / MutableIdListValue.
+ *
+ * This model wraps an [articulated](https://github.com/mweidner037/articulated) IdList,
+ * supporting efficient updates.
+ * Use it to work with lists of values that "shift" in response to changes,
+ * like text characters.
+ */
 export function defineIdListModel<K extends string>(
   type: K
 ): DefModel<IdListValue<K>, MutableIdListValue<K>, IdListUpdate> {
