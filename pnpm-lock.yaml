@@ -12,8 +12,8 @@ importers:
         specifier: ^1.0.6
         version: 1.0.6
       articulated:
-        specifier: ^1.3.1
-        version: 1.3.1
+        specifier: ^1.3.2
+        version: 1.3.2
       functional-red-black-tree:
         specifier: ^1.0.1
         version: 1.0.1
@@ -552,8 +552,8 @@ packages:
     resolution: {integrity: sha512-bMxMKAjg13EBSVscxTaYA4mRc5t1UAXa2kXiGTNfZ079HIWXEkKmkgFrh/nJqamaLSrXO5H4WFFkPEaLJWbs3A==}
     engines: {node: '>= 0.4'}
 
-  articulated@1.3.1:
-    resolution: {integrity: sha512-g+UZ2KjWZR4qM1xfjF+o7Xto5dXaTRme59+Bz8v2NQVI7s7OydbfNPvOv3bKxvGNF6/dLliaoUopvkCais1BUg==}
+  articulated@1.3.2:
+    resolution: {integrity: sha512-5RqNrozqQxeGK4cyMWCS9EFJRZ6/CHAXmaXSIm7L8hkeIiyYbuk+tq3LCCZ7hrdNnImqyTQtmKhXZ2/ncnfUsg==}
 
   assertion-error@1.1.0:
     resolution: {integrity: sha512-jgsaNduz+ndvGyFt3uSuWqvy4lCnIJiovtouQN5JZHOKCS2QuhEdbcQHFhVksz2N2U9hXJo8odG7ETyWlEeuDw==}
@@ -2302,7 +2302,7 @@ snapshots:
       is-array-buffer: 3.0.4
       is-shared-array-buffer: 1.0.3
 
-  articulated@1.3.1:
+  articulated@1.3.2:
     dependencies:
       sparse-array-rled: 2.0.1
 
