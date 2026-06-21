@@ -144,8 +144,16 @@ export class MutableIdListValue<K extends string = string>
  *
  * This model wraps an [articulated](https://github.com/mweidner037/articulated) IdList,
  * supporting efficient updates.
- * Use it to work with lists of values that "shift" in response to changes,
+ * Use it to work with lists of elements that "shift" in response to changes,
  * like text characters.
+ *
+ * An IdListValue only stores the ElementIds themselves. You need to store the list elements
+ * separately, either as their own key-value store entries or in
+ * a collection mapping id -> element.
+ * (You may find it convenient to key by your own ids instead of literal ElementIds,
+ * storing the ElementIds as a separate "position" field on the elements -
+ * e.g., to allow move operations.)
+ * Use sortByListId at render time to combine the IdList with those separate elements.
  */
 export function defineIdListModel<K extends string>(
   type: K
@@ -183,4 +191,40 @@ export function defineIdListModel<K extends string>(
       };
     },
   };
+}
+
+// TODO: Move to articulated?
+/**
+ * Given an IdList and an iterable of list elements that are labeled by its ids,
+ * returns an array of the list elements in id order.
+ */
+export function sortByIdList<T>(
+  list: IdList,
+  elements: Iterable<T>,
+  getElementId: (element: T) => ElementId
+): T[] {
+  // We use two passes to let this run in ~linear time instead of quadratic.
+
+  // 1. Make a map ElementId -> element.
+  const elementsById = new Map<string, T>();
+  for (const element of elements) {
+    const id = getElementId(element);
+    elementsById.set(elementIdToString(id), element);
+  }
+
+  // 2. Iterate through list, mapping each id to its element.
+  const ans: T[] = [];
+  for (const id of list) {
+    const idStr = elementIdToString(id);
+    if (elementsById.has(idStr)) {
+      ans.push(elementsById.get(idStr)!);
+    }
+  }
+
+  return ans;
+}
+
+function elementIdToString(id: ElementId): string {
+  // ":" is okay here because it will never appear in a counter string.
+  return `${id.bunchId}:${id.counter}`;
 }
