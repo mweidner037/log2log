@@ -26,6 +26,8 @@ export interface DefModel<
 > {
   toMutable(value: V): M;
   applyUpdates(value: V, updates: U[]): V;
+  save(value: V): object;
+  load(json: object): V;
 }
 
 /**
@@ -38,6 +40,7 @@ export interface DefModel<
  * an immutable value, with methods to track changes to that value.
  * - A type for updates (U), which describe tracked changes in JSON form.
  * Must be plain objects.
+ * - Functions to save and load (immutable) values to/from JSON.
  *
  * Define models using this function, instead of constructing a DefModel directly, for better type inference.
  * Store all of them in an object typeToModel that maps each type name
@@ -50,6 +53,8 @@ export function defineModel<
 >(model: {
   toMutable(value: V): M;
   applyUpdates(value: V, updates: U[]): V;
+  save(value: V): object;
+  load(json: object): V;
 }): DefModel<V, M, U> {
   return model;
 }

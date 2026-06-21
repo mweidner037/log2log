@@ -55,9 +55,11 @@ export class ReconciliationClient<TTM extends BaseTypeToModel> {
     // state, since there are no pending mutations yet.
     let state = PersistentBiMap.empty<TTM, BaseValue>();
     for (const type of Object.keys(typeToModel) as (keyof TTM & string)[]) {
-      const values = initialState[type];
-      if (values === undefined) continue;
-      for (const value of values) {
+      const model = typeToModel[type];
+      const savedValues = initialState[type];
+      if (savedValues === undefined) continue;
+      for (const savedValue of savedValues) {
+        const value = model.load(savedValue);
         state = state.set(type, value.id, value);
       }
     }

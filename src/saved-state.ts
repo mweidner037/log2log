@@ -1,5 +1,8 @@
-import { BaseTypeToModel, ValueType } from "./model";
+import { BaseTypeToModel } from "./model";
 
+/**
+ * A saved state maps type -> array of serialized values for that type.
+ */
 export type SavedState<TTM extends BaseTypeToModel> = {
-  [K in keyof TTM]: ValueType<TTM, K>[];
+  [K in keyof TTM]: Array<object>;
 };

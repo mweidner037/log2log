@@ -73,6 +73,8 @@ export const typeToModel = {
       ...value,
       count: value.count + updates.reduce((sum, u) => sum + u.delta, 0),
     }),
+    save: (value) => value,
+    load: (json) => json as Counter,
   }),
   register: defineModel<Register, RegisterMutable, RegisterUpdate>({
     toMutable: (value) => new RegisterMutable(value),
@@ -80,6 +82,8 @@ export const typeToModel = {
       updates.length === 0
         ? value
         : { ...value, value: updates[updates.length - 1].value },
+    save: (value) => value,
+    load: (json) => json as Register,
   }),
 };
 export type TTM = typeof typeToModel;

@@ -1,9 +1,10 @@
 import { assert } from "chai";
 import { describe, it } from "mocha";
 
-import { BaseValue } from "../../src/model";
+import * as z from "zod";
 import {
   DeepReadonly,
+  JsonModelValue,
   JsonPatchExtended,
   defineJsonModel,
 } from "../../src/models/json-model";
@@ -12,20 +13,21 @@ import {
 /* Sample type and model.                                                     */
 /* -------------------------------------------------------------------------- */
 
-// Note: the mutable type is `Doc & MutableValue<...>`, so `Doc` uses writable
-// properties; `DeepReadonly<Doc>` is the immutable value type.
-interface Doc extends BaseValue<"doc"> {
-  title: string;
-  tags: string[];
-  meta: {
-    author: string;
-    views: number;
-    nested?: { deep: number };
-  };
-  items: { id: number; name: string }[];
-}
+const docSchema = z.object({
+  type: z.literal("doc"),
+  id: z.string(),
+  title: z.string(),
+  tags: z.array(z.string()),
+  meta: z.object({
+    author: z.string(),
+    views: z.int(),
+    nested: z.optional(z.object({ deep: z.number() })),
+  }),
+  items: z.array(z.object({ id: z.number(), name: z.string() })),
+});
+type Doc = JsonModelValue<typeof docSchema>;
 
-const docModel = defineJsonModel<Doc>();
+const docModel = defineJsonModel(docSchema);
 
 function newDoc(): Doc {
   return {

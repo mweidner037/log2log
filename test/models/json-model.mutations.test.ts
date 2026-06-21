@@ -1,9 +1,10 @@
 import { assert } from "chai";
 import { describe, it } from "mocha";
 
+import * as z from "zod";
 import { Log2Log } from "../../src/log2log";
-import { BaseValue } from "../../src/model";
 import {
+  JsonModelValue,
   JsonPatchExtended,
   defineJsonModel,
 } from "../../src/models/json-model";
@@ -13,20 +14,21 @@ import { SavedState } from "../../src/saved-state";
 /* Sample type and model.                                                     */
 /* -------------------------------------------------------------------------- */
 
-// Note: the mutable type is `Doc & MutableValue<...>`, so `Doc` uses writable
-// properties; `Readonly<Doc>` is the immutable value type.
-interface Doc extends BaseValue<"doc"> {
-  title: string;
-  tags: string[];
-  meta: {
-    author: string;
-    views: number;
-    nested?: { deep: number };
-  };
-  items: { id: number; name: string }[];
-}
+const docSchema = z.object({
+  type: z.literal("doc"),
+  id: z.string(),
+  title: z.string(),
+  tags: z.array(z.string()),
+  meta: z.object({
+    author: z.string(),
+    views: z.int(),
+    nested: z.optional(z.object({ deep: z.number() })),
+  }),
+  items: z.array(z.object({ id: z.number(), name: z.string() })),
+});
+type Doc = JsonModelValue<typeof docSchema>;
 
-const docModel = defineJsonModel<Doc>();
+const docModel = defineJsonModel(docSchema);
 
 function newDoc(): Doc {
   return {
@@ -82,7 +84,7 @@ describe("json-model via Log2Log", () => {
     assert.deepEqual(update!.updates, expectedUpdates);
 
     // Applying the recorded updates to the original reproduces the saved value.
-    const saved = log2log.save().doc[0];
+    const saved = log2log.save().doc[0] as Doc;
     assert.deepEqual(docModel.applyUpdates(newDoc(), expectedUpdates), saved);
     assert.strictEqual(saved.title, "Edited");
     assert.deepEqual(saved.tags, ["a", "b", "c"]);

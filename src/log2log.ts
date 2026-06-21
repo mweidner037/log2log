@@ -50,9 +50,11 @@ export class Log2Log<TTM extends BaseTypeToModel> {
   ) {
     // Load the initial state so that mutations can read existing values.
     for (const type of Object.keys(typeToModel) as (keyof TTM & string)[]) {
-      const values = initialState[type];
-      if (values === undefined) continue;
-      for (const value of values) {
+      const model = typeToModel[type];
+      const savedValues = initialState[type];
+      if (savedValues === undefined) continue;
+      for (const savedValue of savedValues) {
+        const value = model.load(savedValue);
         this.state.set(type, value.id, value);
       }
     }
@@ -128,9 +130,11 @@ export class Log2Log<TTM extends BaseTypeToModel> {
     const result = {} as SavedState<TTM>;
     for (const type of Object.keys(this.typeToModel) as (keyof TTM &
       string)[]) {
+      const model = this.typeToModel[type];
       result[type] = this.state
         .getInner(type)
-        .map(([, value]) => value) as SavedState<TTM>[keyof TTM & string];
+        .map(([, value]) => model.save(value)) as SavedState<TTM>[keyof TTM &
+        string];
     }
     return result;
   }

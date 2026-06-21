@@ -4,6 +4,7 @@
     "outDir": "build/esm",
     "target": "es2022",
     "module": "es2022",
+    "moduleResolution": "bundler",
     /* Enable strict type checking. */
     "strict": true,
     /* Enable interop with dependencies using different module systems. */

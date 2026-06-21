@@ -229,7 +229,7 @@ describe("applyMutations", () => {
     ]);
     const saved = l2l.save();
 
-    const counters = [...saved.counter].sort((x, y) =>
+    const counters = [...(saved.counter as Counter[])].sort((x, y) =>
       x.id.localeCompare(y.id)
     );
     assert.deepEqual(counters, [

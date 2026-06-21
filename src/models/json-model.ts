@@ -1,3 +1,4 @@
+import * as z from "zod";
 import { BaseValue, DefModel, MutableValue, defineModel } from "../model";
 
 // Based on json-patch-observe by Hai Phan
@@ -101,7 +102,11 @@ class JsonTracker {
   /** Maps each non-root container to its parent container and key within it. */
   private readonly parentMap = new WeakMap<JsonContainer, ParentLink>();
 
-  constructor(readonly root: JsonObject) {}
+  constructor(
+    readonly root: JsonObject,
+    /** Schema used to validate the finished value (not strictly typed). */
+    readonly schema: { parse(value: unknown): unknown }
+  ) {}
 
   /**
    * Returns the (cached) proxy for `target`, recording the `parent` and `key`
@@ -467,14 +472,18 @@ class ArrayHandler implements ProxyHandler<JsonArray> {
 
 function finishFn(
   tracker: JsonTracker
-): () => { value: JsonPatchValue; updates: JsonPatchExtended[] } {
+): () => { value: JsonObject; updates: JsonPatchExtended[] } {
+  // The finished value is going to be saved and later loaded,
+  // so it's important that it satisfies the schema.
+  // Thus we parse it with zod in place of a normal structuredClone,
+  // ensuring that schema errors blow up the mutation instead of future loads.
   return () => ({
-    value: structuredClone(tracker.root),
+    value: tracker.schema.parse(tracker.root) as JsonObject,
     updates: tracker.patches,
   });
 }
 
-function toImmutableFn(tracker: JsonTracker): () => JsonPatchValue {
+function toImmutableFn(tracker: JsonTracker): () => JsonObject {
   return () => structuredClone(tracker.root);
 }
 
@@ -550,6 +559,14 @@ function applyPatch(root: JsonObject, patch: JsonPatchExtended): void {
 /* -------------------------------------------------------------------------- */
 
 /**
+ * Mutable value type for a JSON model with schema Z, minus the internal MutableValue methods.
+ *
+ * It is simply the schema output, except with type and id set to readonly.
+ */
+export type JsonModelMutableValue<Z extends z.ZodType<BaseValue>> =
+  z.output<Z> & BaseValue;
+
+/**
  * Deep readonly wrapper for plain JSON values (only).
  */
 export type DeepReadonly<T> = T extends Array<infer U>
@@ -559,45 +576,59 @@ export type DeepReadonly<T> = T extends Array<infer U>
   : T;
 
 /**
- * Defines a {@link DefModel} for a JSON-serializable value type `T`.
+ * (Immutable) value type for a JSON model with schema Z.
  *
- * The mutable value behaves like a plain (mutable) `T`: you read and write its
+ * It is the schema output made DeepReadonly.
+ */
+export type JsonModelValue<Z extends z.ZodType<BaseValue>> = DeepReadonly<
+  JsonModelMutableValue<Z>
+>;
+
+/**
+ * Defines a {@link DefModel} for a JSON-serializable value type
+ * with the given schema.
+ *
+ * The mutable value behaves like a plain (mutable) schema output: you read and write its
  * properties, mutate nested objects, and call array methods directly. Behind
  * the scenes, a tree of {@link Proxy}s records every change as a
  * {@link JsonPatchExtended}, which can later be replayed with `applyUpdates`.
  *
  * Limitations:
- * - Type `T` must have readonly `type` and `id` properties.
+ * - The schema must be an object that includes properties
+ * `type: z.literal(<literal type>)` and `id: z.string()`.
  * - Values must be pure JSON - no classes, Dates, circular references, etc.
- * - The JSON value must **not** have top-level properties names that start with an underscore.
+ * - The JSON value must **not** have top-level properties names that start with an underscore. (TODO: change to double underscore?)
  * Those could conflict with internal methods added to MutableValues.
- * - Objects and arrays inserted into the JSON value are deep-copied,
+ * -  TODOObjects and arrays inserted into the JSON value are deep-copied,
  * so the patches don't reflect their future internal changes.
- *
- * @typeParam T The mutable value type.
- * The (immutable) value type is then `DeepReadonly<T>`.
  */
-export function defineJsonModel<T extends BaseValue>(): DefModel<
-  DeepReadonly<T>,
-  T & MutableValue<DeepReadonly<T>, JsonPatchExtended>,
+export function defineJsonModel<Z extends z.ZodType<BaseValue>>(
+  schema: Z
+): DefModel<
+  JsonModelValue<Z>,
+  JsonModelMutableValue<Z> & MutableValue<JsonModelValue<Z>, JsonPatchExtended>,
   JsonPatchExtended
 > {
-  return defineModel<
-    DeepReadonly<T>,
-    T & MutableValue<DeepReadonly<T>, JsonPatchExtended>,
-    JsonPatchExtended
-  >({
+  return defineModel({
     toMutable(value) {
-      const tracker = new JsonTracker(
-        structuredClone(value as unknown as JsonObject)
-      );
-      return tracker.proxyFor(tracker.root, null, "") as unknown as T &
-        MutableValue<DeepReadonly<T>, JsonPatchExtended>;
+      const tracker = new JsonTracker(structuredClone(value), schema);
+      return tracker.proxyFor(
+        tracker.root,
+        null,
+        ""
+      ) as JsonModelMutableValue<Z> &
+        MutableValue<JsonModelValue<Z>, JsonPatchExtended>;
     },
     applyUpdates(value, updates) {
-      const root = structuredClone(value as unknown as JsonObject);
+      const root = structuredClone(value);
       for (const patch of updates) applyPatch(root, patch);
-      return root as unknown as DeepReadonly<T>;
+      return root;
+    },
+    save(value) {
+      return value;
+    },
+    load(json) {
+      return schema.parse(json) as JsonModelValue<Z>;
     },
   });
 }
