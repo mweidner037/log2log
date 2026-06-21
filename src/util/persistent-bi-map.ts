@@ -5,14 +5,14 @@ import { BaseTypeToModel } from "../model";
  * Creates a composite key from a type and id.
  */
 function makeKey(type: string, id: string): string {
-  return `${type}:${id}`;
+  return `${type}\\${id}`;
 }
 
 /**
  * Parses a composite key back into its type and id.
  */
 function parseKey<T extends string>(compositeKey: string): [T, string] {
-  const idx = compositeKey.indexOf(":");
+  const idx = compositeKey.indexOf("\\");
   return [compositeKey.slice(0, idx) as T, compositeKey.slice(idx + 1)];
 }
 
@@ -24,7 +24,7 @@ function parseKey<T extends string>(compositeKey: string): [T, string] {
  * Uses a functional red-black tree internally for efficient persistent
  * operations.
  *
- * Type keys are assumed not to contain a colon (":").
+ * Type keys are assumed not to contain a colon ("\\").
  */
 export class PersistentBiMap<TTM extends BaseTypeToModel, V> {
   private readonly tree: createRBTree.Tree<string, V>;
@@ -90,7 +90,7 @@ export class PersistentBiMap<TTM extends BaseTypeToModel, V> {
    */
   getInner(type: keyof TTM & string): Array<[string, V]> {
     const results: Array<[string, V]> = [];
-    const prefix = type + ":";
+    const prefix = type + "\\";
     // Find the first key >= prefix, then walk while the prefix matches.
     const iter = this.tree.ge(prefix);
     while (iter.valid) {
@@ -108,7 +108,7 @@ export class PersistentBiMap<TTM extends BaseTypeToModel, V> {
    * Returns true if there are any entries for the given type.
    */
   hasInner(type: keyof TTM & string): boolean {
-    const prefix = type + ":";
+    const prefix = type + "\\";
     const iter = this.tree.ge(prefix);
     return iter.valid && iter.key !== undefined && iter.key.startsWith(prefix);
   }
@@ -118,7 +118,7 @@ export class PersistentBiMap<TTM extends BaseTypeToModel, V> {
    * If there are no such entries, returns this map unchanged.
    */
   deleteInner(type: keyof TTM & string): PersistentBiMap<TTM, V> {
-    const prefix = type + ":";
+    const prefix = type + "\\";
     const keysToRemove: string[] = [];
 
     // Collect all keys with the given prefix.

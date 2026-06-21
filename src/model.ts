@@ -66,7 +66,7 @@ export function defineModel<
  * output by defineModel.
  * Ensure that each type name matches the `type` field in its values.
  *
- * For technical reasons, the type name must **not** contain ":".
+ * For technical reasons, the type name must **not** contain "\\".
  */
 export type BaseTypeToModel = {
   [K in string]: DefModel<
