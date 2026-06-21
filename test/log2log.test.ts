@@ -82,7 +82,7 @@ describe("applyMutations", () => {
   it("reports updates for mutated existing values", () => {
     const {
       results: [result],
-      allSets,
+      rendered: { sets: allSets },
     } = newLog2Log().applyMutations([
       mut((tx) => {
         tx.getMutable("counter", "a")!.add(7);
@@ -163,7 +163,7 @@ describe("applyMutations", () => {
   it("a value created in one mutation is visible to later mutations", () => {
     const {
       results: [first, second],
-      allSets,
+      rendered: { sets: allSets },
     } = newLog2Log().applyMutations([
       mut((tx) => tx.set<"counter">({ type: "counter", id: "b", count: 3 })),
       mut((tx) => {
@@ -198,7 +198,7 @@ describe("applyMutations", () => {
     const boom = new Error("boom");
     const {
       results: [first, second, third],
-      allSets,
+      rendered: { sets: allSets },
     } = newLog2Log().applyMutations([
       mut((tx) => tx.getMutable("counter", "a")!.add(5)),
       mut(() => {

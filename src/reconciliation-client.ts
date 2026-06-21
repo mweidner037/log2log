@@ -5,27 +5,7 @@ import { SavedState } from "./saved-state";
 import { BiMap } from "./util/bi-map";
 import { ChangeSet } from "./util/change-set";
 import { PersistentBiMap } from "./util/persistent-bi-map";
-
-/**
- * The changes to a {@link ReconciliationClient}'s (optimistic) state caused by
- * an operation, as blind sets and deletions.
- *
- * Unlike a server {@link ChangeSet}, a client's optimistic state can lose
- * values: an optimistic mutation may create a value whose authoritative server
- * mutation later fails (becoming a no-op), so the optimistically-created value
- * must be deleted when that mutation is confirmed.
- */
-export interface ClientMutationResult<TTM extends BaseTypeToModel> {
-  /**
-   * All values set directly, including new values.
-   */
-  allSets: BiMap<TTM, BaseValue>;
-  /**
-   * The ids deleted, as an array of ids per type name. Types with no deletions
-   * are omitted.
-   */
-  deletes: Map<keyof TTM & string, string[]>;
-}
+import { RenderedChangeSet } from "./util/rendered-change-set";
 
 /**
  * Key-value store replica for a client connected to a Log2Log server.
@@ -104,7 +84,7 @@ export class ReconciliationClient<TTM extends BaseTypeToModel> {
    * @returns The changes to the current (optimistic) state. A mutation can only
    * set values (never delete), so the result has no deletions.
    */
-  applyOptimisticMutation(mutation: Mutation<TTM>): ClientMutationResult<TTM> {
+  applyOptimisticMutation(mutation: Mutation<TTM>): RenderedChangeSet<TTM> {
     // Run the mutation on top of the current optimistic state. If it throws,
     // the error propagates here before we touch any state, so this is a no-op.
     const transaction = new TransactionImpl(
@@ -125,7 +105,7 @@ export class ReconciliationClient<TTM extends BaseTypeToModel> {
       this.optimisticChanges
     );
     this.pendingMutations.set(mutation.id, mutation);
-    return { allSets: sets, deletes: new Map() };
+    return { sets: sets, deletes: new Map() };
   }
 
   /**
@@ -144,7 +124,7 @@ export class ReconciliationClient<TTM extends BaseTypeToModel> {
   applyServerChanges(
     changeSet: ChangeSet<TTM>,
     confirmedMutationIds: string[]
-  ): ClientMutationResult<TTM> {
+  ): RenderedChangeSet<TTM> {
     // Confirmed mutations are now incorporated into the server state, so they
     // should no longer be rerun.
     for (const id of confirmedMutationIds) {
@@ -208,7 +188,7 @@ export class ReconciliationClient<TTM extends BaseTypeToModel> {
       }
     }
 
-    return { allSets: sets, deletes };
+    return { sets: sets, deletes };
   }
 
   /**

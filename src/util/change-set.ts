@@ -19,7 +19,7 @@ export type SavedChangeSet<TTM extends BaseTypeToModel> = {
  * It records *what* changed but not the resulting values: blind sets carry the
  * full new value, while updates carry only their update objects. The final
  * value of an updated key can be recovered by applying its updates to the
- * previous value (see {@link Log2Log.applyMutations}'s `allSets`).
+ * previous value (see {@link Log2Log.applyMutations}'s `rendered`).
  */
 export class ChangeSet<TTM extends BaseTypeToModel> {
   constructor(

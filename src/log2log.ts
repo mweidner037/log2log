@@ -4,6 +4,7 @@ import { Mutation } from "./mutation";
 import { SavedState } from "./saved-state";
 import { BiMap } from "./util/bi-map";
 import { ChangeSet } from "./util/change-set";
+import { RenderedChangeSet } from "./util/rendered-change-set";
 
 export type ApplyMutationResult<TTM extends BaseTypeToModel> =
   | {
@@ -20,11 +21,14 @@ export type ApplyMutationResult<TTM extends BaseTypeToModel> =
 export interface ServerMutationsResult<TTM extends BaseTypeToModel> {
   results: ApplyMutationResult<TTM>[];
   /**
-   * The final value of each key that was set or updated by some mutation. Since
-   * a {@link ChangeSet}'s updates record only their update objects, this is how
-   * to recover updated keys' resulting values.
+   * The overall changes across all mutations, rendered as final values. Since a
+   * {@link ChangeSet}'s updates record only their update objects, this is how to
+   * recover updated keys' resulting values.
+   *
+   * Server mutations cannot delete values, so `rendered.deletes` is always
+   * empty; the field exists to match a client's {@link RenderedChangeSet}.
    */
-  allSets: BiMap<TTM, BaseValue>;
+  rendered: RenderedChangeSet<TTM>;
 }
 
 /**
@@ -92,7 +96,7 @@ export class Log2Log<TTM extends BaseTypeToModel> {
       results.push({ isSuccess: true, changes });
     }
 
-    return { results, allSets };
+    return { results, rendered: { sets: allSets, deletes: new Map() } };
   }
 
   /**

@@ -4,12 +4,10 @@ import { describe, it } from "mocha";
 import { Log2Log } from "../src/log2log";
 import { BaseValue } from "../src/model";
 import { Mutation } from "../src/mutation";
-import {
-  ClientMutationResult,
-  ReconciliationClient,
-} from "../src/reconciliation-client";
+import { ReconciliationClient } from "../src/reconciliation-client";
 import { BiMap } from "../src/util/bi-map";
 import { ChangeSet } from "../src/util/change-set";
+import { RenderedChangeSet } from "../src/util/rendered-change-set";
 import {
   Counter,
   Register,
@@ -45,11 +43,11 @@ function serverChanges(
 }
 
 function blindVal<V extends BaseValue>(
-  changes: ClientMutationResult<TTM>,
+  changes: RenderedChangeSet<TTM>,
   type: keyof TTM,
   id: string
 ): V | undefined {
-  return changes.allSets.get(type, id) as V | undefined;
+  return changes.sets.get(type, id) as V | undefined;
 }
 
 const addCounter =
@@ -157,7 +155,7 @@ describe("ReconciliationClient", () => {
       });
       // The mutation was not stored: a later server change does not rerun it.
       const changes = client.applyServerChanges(emptyChangeSet(), []);
-      assert.strictEqual(changes.allSets.size, 0);
+      assert.strictEqual(changes.sets.size, 0);
       assert.strictEqual(changes.deletes.size, 0);
       assert.deepEqual(client.get("counter", "a"), {
         type: "counter",
@@ -365,7 +363,7 @@ describe("ReconciliationClient", () => {
       // server, so it must be deleted from the optimistic state.
       const changes = client.applyServerChanges(emptyChangeSet(), ["m1"]);
       assert.isUndefined(client.get("counter", "b"));
-      assert.strictEqual(changes.allSets.size, 0);
+      assert.strictEqual(changes.sets.size, 0);
       assert.deepEqual([...changes.deletes.entries()], [["counter", ["b"]]]);
     });
   });
