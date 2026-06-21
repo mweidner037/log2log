@@ -19,7 +19,7 @@ export interface ClientMutationResult<TTM extends BaseTypeToModel> {
   /**
    * All values set directly, including new values.
    */
-  sets: BiMap<TTM, BaseValue>;
+  allSets: BiMap<TTM, BaseValue>;
   /**
    * The ids deleted, as an array of ids per type name. Types with no deletions
    * are omitted.
@@ -117,14 +117,15 @@ export class ReconciliationClient<TTM extends BaseTypeToModel> {
     // remember it so that it can be rerun against future server states. The
     // changes also extend the optimistic overlay over the server state.
     const sets = new BiMap<TTM, BaseValue>();
-    this.optimisticState = this.applyChanges(
+    const { allSets } = transaction.getChanges();
+    this.optimisticState = this.applySets(
       this.optimisticState,
-      transaction.getChanges(),
+      allSets,
       sets,
       this.optimisticChanges
     );
     this.pendingMutations.set(mutation.id, mutation);
-    return { sets, deletes: new Map() };
+    return { allSets: sets, deletes: new Map() };
   }
 
   /**
@@ -178,9 +179,10 @@ export class ReconciliationClient<TTM extends BaseTypeToModel> {
         );
         continue;
       }
-      optimisticState = this.applyChanges(
+      const { allSets } = transaction.getChanges();
+      optimisticState = this.applySets(
         optimisticState,
-        transaction.getChanges(),
+        allSets,
         sets,
         this.optimisticChanges
       );
@@ -206,7 +208,25 @@ export class ReconciliationClient<TTM extends BaseTypeToModel> {
       }
     }
 
-    return { sets, deletes };
+    return { allSets: sets, deletes };
+  }
+
+  /**
+   * Applies the given final values (e.g. a transaction's `allSets`) to `state`
+   * as blind sets, returning the resulting state. Each value is also recorded
+   * in every `accumulators` map (later writes override earlier ones).
+   */
+  private applySets(
+    state: PersistentBiMap<TTM, BaseValue>,
+    sets: BiMap<TTM, BaseValue>,
+    ...accumulators: BiMap<TTM, BaseValue>[]
+  ): PersistentBiMap<TTM, BaseValue> {
+    let result = state;
+    for (const [type, id, value] of sets.entries()) {
+      result = result.set(type, id, value);
+      for (const acc of accumulators) acc.set(type, id, value);
+    }
+    return result;
   }
 
   /**

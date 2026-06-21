@@ -49,7 +49,7 @@ function blindVal<V extends BaseValue>(
   type: keyof TTM,
   id: string
 ): V | undefined {
-  return changes.sets.get(type, id) as V | undefined;
+  return changes.allSets.get(type, id) as V | undefined;
 }
 
 const addCounter =
@@ -157,7 +157,7 @@ describe("ReconciliationClient", () => {
       });
       // The mutation was not stored: a later server change does not rerun it.
       const changes = client.applyServerChanges(emptyChangeSet(), []);
-      assert.strictEqual(changes.sets.size, 0);
+      assert.strictEqual(changes.allSets.size, 0);
       assert.strictEqual(changes.deletes.size, 0);
       assert.deepEqual(client.get("counter", "a"), {
         type: "counter",
@@ -365,7 +365,7 @@ describe("ReconciliationClient", () => {
       // server, so it must be deleted from the optimistic state.
       const changes = client.applyServerChanges(emptyChangeSet(), ["m1"]);
       assert.isUndefined(client.get("counter", "b"));
-      assert.strictEqual(changes.sets.size, 0);
+      assert.strictEqual(changes.allSets.size, 0);
       assert.deepEqual([...changes.deletes.entries()], [["counter", ["b"]]]);
     });
   });

@@ -151,29 +151,46 @@ export class TransactionImpl<TTM extends BaseTypeToModel>
   }
 
   /**
-   * Returns all changes made during the transaction: blind sets (full values)
-   * and updates (lists of update objects) for changes to mutable values.
+   * Returns the changes made during the transaction, plus the final value of
+   * every changed key.
+   *
+   * `changes` is a minimal {@link ChangeSet}: blind sets (full values) and
+   * updates (lists of update objects) for changes to mutable values. `allSets`
+   * holds the final value of every changed key, whether blind-set or updated,
+   * so consumers can recover updated keys' resulting values without replaying
+   * their updates.
    */
-  getChanges(): ChangeSet<TTM> {
+  getChanges(): { changes: ChangeSet<TTM>; allSets: BiMap<TTM, BaseValue> } {
     const blindSets = new BiMap<TTM, BaseValue>();
     const updates = new BiMap<TTM, object[]>();
+    const allSets = new BiMap<TTM, BaseValue>();
 
     for (const [type, id, value] of this.blindSets.entries()) {
       blindSets.set(type, id, value);
+      allSets.set(type, id, value);
     }
 
     for (const [type, id, entry] of this.mutables.entries()) {
       if (entry.fromState) {
-        // An existing value was mutated: commit the changes as updates.
+        // An existing value was mutated: commit the changes as updates, and
+        // record its final value (straight from __finish) in allSets.
         const change = entry.mutable.__finish();
-        if (change.updates.length > 0) updates.set(type, id, change.updates);
+        if (change.updates.length > 0) {
+          updates.set(type, id, change.updates);
+          allSets.set(type, id, change.value);
+        }
       } else {
         // A new value (set or created from initialValue): commit the final
         // value as a blind set, even if no further changes were made.
-        blindSets.set(type, id, entry.mutable.__toImmutable());
+        const value = entry.mutable.__toImmutable();
+        blindSets.set(type, id, value);
+        allSets.set(type, id, value);
       }
     }
 
-    return new ChangeSet(this.typeToModel, blindSets, updates);
+    return {
+      changes: new ChangeSet(this.typeToModel, blindSets, updates),
+      allSets,
+    };
   }
 }

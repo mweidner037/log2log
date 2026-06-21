@@ -80,17 +80,11 @@ export class Log2Log<TTM extends BaseTypeToModel> {
 
       // The mutation succeeded. Apply its changes to this.state so that the
       // next mutation sees them, recording each key's final value in allSets,
-      // and report the changes as this mutation's result.
-      const changes = transaction.getChanges();
-      for (const [type, id, value] of changes.blindSets.entries()) {
-        this.state.set(type, id, value);
-        allSets.set(type, id, value);
-      }
-      for (const [type, id, valueUpdates] of changes.updates.entries()) {
-        // Updates only target existing values, so the prior value is present.
-        const prev = this.state.get(type, id);
-        if (prev === undefined) continue;
-        const value = this.typeToModel[type].applyUpdates(prev, valueUpdates);
+      // and report the changes as this mutation's result. The transaction's
+      // allSets already holds each changed key's final value (blind-set or
+      // updated), so apply those directly instead of replaying updates.
+      const { changes, allSets: changedValues } = transaction.getChanges();
+      for (const [type, id, value] of changedValues.entries()) {
         this.state.set(type, id, value);
         allSets.set(type, id, value);
       }
