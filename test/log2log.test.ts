@@ -1,9 +1,10 @@
 import { assert } from "chai";
 import { describe, it } from "mocha";
 
-import { ChangeSet, Log2Log } from "../src/log2log";
+import { Log2Log, MutationResult } from "../src/log2log";
 import { BaseValue } from "../src/model";
 import { Mutation } from "../src/mutation";
+import { ChangeSet } from "../src/util/change-set";
 import {
   Counter,
   Register,
@@ -30,6 +31,20 @@ function mut(
   return { id, apply: callback };
 }
 
+/** Asserts that a result succeeded and returns its changes. */
+function expectSuccess(result: MutationResult<TTM>): ChangeSet<TTM> {
+  assert.isTrue(result.isSuccess);
+  if (!result.isSuccess) throw new Error("unreachable");
+  return result.changes;
+}
+
+/** Asserts that a result failed and returns its error. */
+function expectError(result: MutationResult<TTM>): unknown {
+  assert.isFalse(result.isSuccess);
+  if (result.isSuccess) throw new Error("unreachable");
+  return result.error;
+}
+
 function findSet<V extends BaseValue>(
   changes: ChangeSet<TTM>,
   type: keyof TTM,
@@ -38,14 +53,12 @@ function findSet<V extends BaseValue>(
   return changes.blindSets.get(type, id) as V | undefined;
 }
 
-function findUpdate<V extends BaseValue>(
+function findUpdate(
   changes: ChangeSet<TTM>,
   type: keyof TTM,
   id: string
-): { value: V; updates: object[] } | undefined {
-  return changes.updates.get(type, id) as
-    | { value: V; updates: object[] }
-    | undefined;
+): object[] | undefined {
+  return changes.updates.get(type, id);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -67,46 +80,56 @@ describe("applyMutations", () => {
   });
 
   it("reports updates for mutated existing values", () => {
-    const { errors, changes } = newLog2Log().applyMutations([
+    const {
+      results: [result],
+      rendered: { sets: allSets },
+    } = newLog2Log().applyMutations([
       mut((tx) => {
         tx.getMutable("counter", "a")!.add(7);
         tx.getMutable("register", "r")!.setValue("hello");
       }),
     ]);
-    assert.strictEqual(errors.size, 0);
+    const changes = expectSuccess(result);
     assert.strictEqual(changes.blindSets.size, 0);
 
-    const counterUpdate = findUpdate<Counter>(changes, "counter", "a")!;
-    assert.deepEqual(counterUpdate.value, {
+    // The ChangeSet records the updates; the final values come from allSets.
+    assert.deepEqual(findUpdate(changes, "counter", "a"), [{ delta: 7 }]);
+    assert.deepEqual(allSets.get("counter", "a") as Counter, {
       type: "counter",
       id: "a",
       count: 17,
     });
-    assert.deepEqual(counterUpdate.updates, [{ delta: 7 }]);
 
-    const registerUpdate = findUpdate<Register>(changes, "register", "r")!;
-    assert.deepEqual(registerUpdate.value, {
+    assert.deepEqual(findUpdate(changes, "register", "r"), [
+      { value: "hello" },
+    ]);
+    assert.deepEqual(allSets.get("register", "r") as Register, {
       type: "register",
       id: "r",
       value: "hello",
     });
-    assert.deepEqual(registerUpdate.updates, [{ value: "hello" }]);
   });
 
   it("omits mutables that were touched but not changed", () => {
-    const { changes } = newLog2Log().applyMutations([
+    const {
+      results: [result],
+    } = newLog2Log().applyMutations([
       mut((tx) => {
         tx.getMutable("counter", "a");
       }),
     ]);
+    const changes = expectSuccess(result);
     assert.strictEqual(changes.blindSets.size, 0);
     assert.strictEqual(changes.updates.size, 0);
   });
 
   it("reports set values as blind sets", () => {
-    const { changes } = newLog2Log().applyMutations([
+    const {
+      results: [result],
+    } = newLog2Log().applyMutations([
       mut((tx) => tx.set<"counter">({ type: "counter", id: "b", count: 3 })),
     ]);
+    const changes = expectSuccess(result);
     assert.strictEqual(changes.updates.size, 0);
     assert.deepEqual(findSet<Counter>(changes, "counter", "b"), {
       type: "counter",
@@ -116,7 +139,9 @@ describe("applyMutations", () => {
   });
 
   it("getMutable with initialValue creates a new value, committed as a set", () => {
-    const { changes } = newLog2Log().applyMutations([
+    const {
+      results: [result],
+    } = newLog2Log().applyMutations([
       mut(
         (tx) =>
           void tx.getMutable("counter", "new", {
@@ -126,6 +151,7 @@ describe("applyMutations", () => {
           })
       ),
     ]);
+    const changes = expectSuccess(result);
     assert.strictEqual(changes.updates.size, 0);
     assert.deepEqual(findSet<Counter>(changes, "counter", "new"), {
       type: "counter",
@@ -134,8 +160,11 @@ describe("applyMutations", () => {
     });
   });
 
-  it("a value created in one mutation is visible to and folds updates from later mutations", () => {
-    const { errors, changes } = newLog2Log().applyMutations([
+  it("a value created in one mutation is visible to later mutations", () => {
+    const {
+      results: [first, second],
+      rendered: { sets: allSets },
+    } = newLog2Log().applyMutations([
       mut((tx) => tx.set<"counter">({ type: "counter", id: "b", count: 3 })),
       mut((tx) => {
         // 'b' is now in the state, so it reads as an existing value.
@@ -147,56 +176,52 @@ describe("applyMutations", () => {
         tx.getMutable("counter", "b")!.add(2);
       }),
     ]);
-    assert.strictEqual(errors.size, 0);
-    // Overall, 'b' is new, so it remains a single blind set with the final value.
-    assert.strictEqual(changes.updates.size, 0);
-    assert.deepEqual(findSet<Counter>(changes, "counter", "b"), {
+    // The first mutation creates 'b' as a blind set.
+    const firstChanges = expectSuccess(first);
+    assert.deepEqual(findSet<Counter>(firstChanges, "counter", "b"), {
+      type: "counter",
+      id: "b",
+      count: 3,
+    });
+    // The second mutation sees 'b' as existing and reports its own update.
+    const secondChanges = expectSuccess(second);
+    assert.deepEqual(findUpdate(secondChanges, "counter", "b"), [{ delta: 2 }]);
+    // The accumulated final value reflects both mutations: 3 + 2 = 5.
+    assert.deepEqual(allSets.get("counter", "b") as Counter, {
       type: "counter",
       id: "b",
       count: 5,
     });
   });
 
-  it("updates to the same existing value across mutations merge into one entry", () => {
-    const { changes } = newLog2Log().applyMutations([
-      mut((tx) => tx.getMutable("counter", "a")!.add(5)),
-      mut((tx) => tx.getMutable("counter", "a")!.add(3)),
-    ]);
-    assert.strictEqual(changes.blindSets.size, 0);
-
-    const update = findUpdate<Counter>(changes, "counter", "a")!;
-    assert.deepEqual(update.value, { type: "counter", id: "a", count: 18 });
-    assert.deepEqual(update.updates, [{ delta: 5 }, { delta: 3 }]);
-  });
-
-  it("a later blind set overrides earlier updates to the same value", () => {
-    const { changes } = newLog2Log().applyMutations([
-      mut((tx) => tx.getMutable("counter", "a")!.add(5)),
-      mut((tx) => tx.set<"counter">({ type: "counter", id: "a", count: 0 })),
-    ]);
-    assert.strictEqual(changes.updates.size, 0);
-    assert.deepEqual(findSet<Counter>(changes, "counter", "a"), {
-      type: "counter",
-      id: "a",
-      count: 0,
-    });
-  });
-
-  it("a failed mutation records the error and does not affect state or changes", () => {
+  it("a failed mutation is reported as a failure and does not affect state", () => {
     const boom = new Error("boom");
-    const { errors, changes } = newLog2Log().applyMutations([
+    const {
+      results: [first, second, third],
+      rendered: { sets: allSets },
+    } = newLog2Log().applyMutations([
       mut((tx) => tx.getMutable("counter", "a")!.add(5)),
       mut(() => {
         throw boom;
       }, "boom"),
       mut((tx) => tx.getMutable("counter", "a")!.add(3)),
     ]);
-    // Only the failed mutation is reported, keyed by its id.
-    assert.deepEqual([...errors], [["boom", boom]]);
-    // The failed mutation neither contributed changes nor disturbed the state.
-    const update = findUpdate<Counter>(changes, "counter", "a")!;
-    assert.deepEqual(update.value, { type: "counter", id: "a", count: 18 });
-    assert.deepEqual(update.updates, [{ delta: 5 }, { delta: 3 }]);
+    // The failed mutation is reported as a failure carrying its error.
+    assert.strictEqual(expectError(second), boom);
+    // The surrounding mutations succeed, and the failed one did not disturb the
+    // state seen by the later mutation: 'a' goes 10 -> 15 -> 18. Each mutation
+    // records its own delta, and allSets holds the final accumulated value.
+    assert.deepEqual(findUpdate(expectSuccess(first), "counter", "a"), [
+      { delta: 5 },
+    ]);
+    assert.deepEqual(findUpdate(expectSuccess(third), "counter", "a"), [
+      { delta: 3 },
+    ]);
+    assert.deepEqual(allSets.get("counter", "a") as Counter, {
+      type: "counter",
+      id: "a",
+      count: 18,
+    });
   });
 
   it("getAll and getAllMutable skip missing ids and reflect local state", () => {
@@ -239,5 +264,113 @@ describe("applyMutations", () => {
     assert.deepEqual(saved.register, [
       { type: "register", id: "r", value: "hello" },
     ]);
+  });
+
+  it("reports a delete and removes the value from the state", () => {
+    const l2l = newLog2Log();
+    const {
+      results: [result],
+      rendered: { sets: allSets, deletes },
+    } = l2l.applyMutations([mut((tx) => tx.delete("counter", "a"))]);
+
+    const changes = expectSuccess(result);
+    assert.strictEqual(changes.blindSets.size, 0);
+    assert.strictEqual(changes.updates.size, 0);
+    assert.strictEqual(changes.deletes.size, 1);
+    assert.isTrue(changes.deletes.has("counter", "a"));
+
+    // The rendered result reports the delete and no longer the value.
+    assert.strictEqual(allSets.size, 0);
+    assert.strictEqual(deletes.size, 1);
+    assert.isTrue(deletes.has("counter", "a"));
+
+    // The value is gone from the state.
+    assert.deepEqual(l2l.save().counter, []);
+  });
+
+  it("a deleted value reads as absent within the same mutation", () => {
+    let read: Counter | undefined = { type: "counter", id: "a", count: -1 };
+    newLog2Log().applyMutations([
+      mut((tx) => {
+        tx.delete("counter", "a");
+        read = tx.get("counter", "a");
+      }),
+    ]);
+    assert.isUndefined(read);
+  });
+
+  it("deleting a nonexistent value still records the delete", () => {
+    const {
+      results: [result],
+    } = newLog2Log().applyMutations([
+      mut((tx) => tx.delete("counter", "missing")),
+    ]);
+    const changes = expectSuccess(result);
+    assert.strictEqual(changes.deletes.size, 1);
+    assert.isTrue(changes.deletes.has("counter", "missing"));
+  });
+
+  it("a set after a delete overrides it, reported as a blind set", () => {
+    const {
+      results: [result],
+      rendered: { deletes },
+    } = newLog2Log().applyMutations([
+      mut((tx) => {
+        tx.delete("counter", "a");
+        tx.set<"counter">({ type: "counter", id: "a", count: 99 });
+      }),
+    ]);
+    const changes = expectSuccess(result);
+    assert.strictEqual(changes.deletes.size, 0);
+    assert.strictEqual(deletes.size, 0);
+    assert.deepEqual(findSet<Counter>(changes, "counter", "a"), {
+      type: "counter",
+      id: "a",
+      count: 99,
+    });
+  });
+
+  it("a delete after a set overrides it, reported as a delete", () => {
+    const {
+      results: [result],
+      rendered: { sets: allSets, deletes },
+    } = newLog2Log().applyMutations([
+      mut((tx) => {
+        tx.set<"counter">({ type: "counter", id: "b", count: 3 });
+        tx.delete("counter", "b");
+      }),
+    ]);
+    const changes = expectSuccess(result);
+    assert.strictEqual(changes.blindSets.size, 0);
+    assert.strictEqual(changes.deletes.size, 1);
+    assert.isTrue(changes.deletes.has("counter", "b"));
+    assert.strictEqual(allSets.size, 0);
+    assert.strictEqual(deletes.size, 1);
+    assert.isTrue(deletes.has("counter", "b"));
+  });
+
+  it("getMutable resurrects a deleted value from initialValue", () => {
+    const {
+      results: [result],
+      rendered: { deletes },
+    } = newLog2Log().applyMutations([
+      mut((tx) => {
+        tx.delete("counter", "a");
+        assert.isUndefined(tx.getMutable("counter", "a"));
+        tx.getMutable("counter", "a", {
+          type: "counter",
+          id: "a",
+          count: 1,
+        }).add(4);
+      }),
+    ]);
+    const changes = expectSuccess(result);
+    assert.strictEqual(changes.deletes.size, 0);
+    assert.strictEqual(deletes.size, 0);
+    assert.deepEqual(findSet<Counter>(changes, "counter", "a"), {
+      type: "counter",
+      id: "a",
+      count: 5,
+    });
   });
 });

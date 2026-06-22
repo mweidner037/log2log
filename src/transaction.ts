@@ -60,4 +60,13 @@ export interface Transaction<TTM extends BaseTypeToModel> {
    * the mutable versions exhibit undefined behavior.
    */
   set<K extends keyof TTM>(value: ValueType<TTM, K>): void;
+
+  /**
+   * Deletes the value with the given type and id from the store.
+   *
+   * Note: Any active mutable versions of the value are overridden
+   * (their changes will not be committed). Future reads and writes to
+   * the mutable versions exhibit undefined behavior.
+   */
+  delete<K extends keyof TTM>(type: K, id: string): void;
 }

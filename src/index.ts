@@ -7,4 +7,6 @@ export * from "./reconciliation-client";
 export * from "./saved-state";
 export * from "./transaction";
 export * from "./util/bi-map";
+export * from "./util/change-set";
 export * from "./util/persistent-bi-map";
+export * from "./util/rendered-change-set";

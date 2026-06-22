@@ -58,7 +58,9 @@ function newState(): SavedState<TTM> {
 describe("json-model via Log2Log", () => {
   it("commits mutations to an existing value as updates", () => {
     const log2log = new Log2Log(typeToModel, newState());
-    const result = log2log.applyMutations([
+    const {
+      results: [result],
+    } = log2log.applyMutations([
       {
         id: "m1",
         apply: (tx) => {
@@ -71,7 +73,8 @@ describe("json-model via Log2Log", () => {
       },
     ]);
 
-    assert.strictEqual(result.errors.size, 0);
+    assert.isTrue(result.isSuccess);
+    if (!result.isSuccess) throw new Error("unreachable");
     // The change is described via updates (not a blind set).
     assert.isUndefined(result.changes.blindSets.get("doc", "d1"));
     const update = result.changes.updates.get("doc", "d1");
@@ -81,7 +84,7 @@ describe("json-model via Log2Log", () => {
       { op: "splice", path: "/tags", index: 2, remove: 0, add: ["c"] },
       { op: "replace", path: "/items/0/name", value: "first" },
     ];
-    assert.deepEqual(update!.updates, expectedUpdates);
+    assert.deepEqual(update, expectedUpdates);
 
     // Applying the recorded updates to the original reproduces the saved value.
     const saved = log2log.save().doc[0] as Doc;
@@ -94,7 +97,9 @@ describe("json-model via Log2Log", () => {
   it("commits a newly set value as a blind set", () => {
     const log2log = new Log2Log(typeToModel, { doc: [] });
     const fresh = newDoc();
-    const result = log2log.applyMutations([
+    const {
+      results: [result],
+    } = log2log.applyMutations([
       {
         id: "m1",
         apply: (tx) => {
@@ -104,7 +109,8 @@ describe("json-model via Log2Log", () => {
       },
     ]);
 
-    assert.strictEqual(result.errors.size, 0);
+    assert.isTrue(result.isSuccess);
+    if (!result.isSuccess) throw new Error("unreachable");
     const blind = result.changes.blindSets.get("doc", "d1") as Doc | undefined;
     assert.isDefined(blind);
     assert.strictEqual(blind!.title, "Brand new");

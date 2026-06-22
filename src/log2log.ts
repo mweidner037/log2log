@@ -3,33 +3,15 @@ import { BaseTypeToModel, BaseValue } from "./model";
 import { Mutation } from "./mutation";
 import { SavedState } from "./saved-state";
 import { BiMap } from "./util/bi-map";
+import { ChangeSet } from "./util/change-set";
+import { RenderedChangeSet } from "./util/rendered-change-set";
 
-/**
- * An atomic set of changes to the key-value store.
- */
-export interface ChangeSet<TTM extends BaseTypeToModel> {
-  /**
-   * All values set directly, including new values.
-   */
-  blindSets: BiMap<TTM, BaseValue>;
-  /**
-   * All values changed via a MutableValue, storing the
-   * final value and its updates.
-   */
-  updates: BiMap<TTM, { value: BaseValue; updates: object[] }>;
-}
-
-export interface ApplyMutationsResult<TTM extends BaseTypeToModel> {
-  /**
-   * The thrown error for each mutation that failed, keyed by mutation id.
-   * Mutations that succeeded are omitted.
-   */
-  errors: Map<string, unknown>;
-  /**
-   * The cumulative changes caused by these mutations.
-   */
-  changes: ChangeSet<TTM>;
-}
+export type MutationResult<TTM extends BaseTypeToModel> =
+  | {
+      isSuccess: true;
+      changes: ChangeSet<TTM>;
+    }
+  | { isSuccess: false; error: unknown };
 
 /**
  * Converts a log of mutations into a log of key-value store changes.
@@ -48,7 +30,7 @@ export class Log2Log<TTM extends BaseTypeToModel> {
     readonly typeToModel: TTM,
     readonly initialState: SavedState<TTM>
   ) {
-    // Load the initial state so that mutations can read existing values.
+    // Load initial state.
     for (const type of Object.keys(typeToModel) as (keyof TTM & string)[]) {
       const model = typeToModel[type];
       const savedValues = initialState[type];
@@ -61,17 +43,20 @@ export class Log2Log<TTM extends BaseTypeToModel> {
   }
 
   /**
-   * Applies a sequence of mutations, returning their success/failure statuses
-   * and the overall changes.
+   * Applies a sequence of mutations, returning their isSuccess statuses,
+   * individual ChangeSets/errors, and overall changes (rendered).
    *
    * Any mutations that throw become no-ops.
    */
-  applyMutations(mutations: Mutation<TTM>[]): ApplyMutationsResult<TTM> {
-    const errors = new Map<string, unknown>();
-    // The overall changes, accumulated across successful mutations and keyed by
-    // (type, id). A given (type, id) is in at most one of these maps.
-    const blindSets = new BiMap<TTM, BaseValue>();
-    const updates = new BiMap<TTM, { value: BaseValue; updates: object[] }>();
+  applyMutations(mutations: Mutation<TTM>[]): {
+    results: MutationResult<TTM>[];
+    /**
+     * The overall changes across all mutations, rendered as final values.
+     */
+    rendered: RenderedChangeSet<TTM>;
+  } {
+    const results: MutationResult<TTM>[] = [];
+    const rendered = new RenderedChangeSet<TTM>(this.typeToModel);
 
     for (const mutation of mutations) {
       const transaction = new TransactionImpl(this.typeToModel, this.state);
@@ -79,47 +64,19 @@ export class Log2Log<TTM extends BaseTypeToModel> {
         mutation.apply(transaction);
       } catch (error) {
         // A failed mutation is a no-op: record the error and move on without
-        // touching the state or the accumulated changes.
+        // touching the state.
         console.log("Mutation " + mutation.id + " failed, skipping", error);
-        errors.set(mutation.id, error);
+        results.push({ isSuccess: false, error });
         continue;
       }
 
-      // The mutation succeeded. Apply its changes to this.state so that the
-      // next mutation sees them, and fold them into the overall changeSet.
-      const changes = transaction.getChanges();
-
-      for (const [type, id, value] of changes.blindSets.entries()) {
-        this.state.set(type, id, value);
-        // A blind set replaces any prior set and overrides any prior updates.
-        updates.delete(type, id);
-        blindSets.set(type, id, value);
-      }
-
-      for (const [type, id, update] of changes.updates.entries()) {
-        this.state.set(type, id, update.value);
-
-        if (blindSets.has(type, id)) {
-          // The value was blind-set earlier in this batch, so we can't describe
-          // its overall change in terms of updates. Convert them into an
-          // updated blind set.
-          blindSets.set(type, id, update.value);
-        } else {
-          const existing = updates.get(type, id);
-          if (existing !== undefined) {
-            existing.updates.push(...update.updates);
-            existing.value = update.value;
-          } else {
-            updates.set(type, id, {
-              value: update.value,
-              updates: [...update.updates],
-            });
-          }
-        }
-      }
+      const { changes, rendered: trRendered } = transaction.getChanges();
+      changeState(this.state, trRendered);
+      rendered.applyRendered(trRendered);
+      results.push({ isSuccess: true, changes });
     }
 
-    return { errors, changes: { blindSets, updates } };
+    return { results, rendered };
   }
 
   /**
@@ -137,5 +94,17 @@ export class Log2Log<TTM extends BaseTypeToModel> {
         string];
     }
     return result;
+  }
+}
+
+function changeState<TTM extends BaseTypeToModel>(
+  state: BiMap<TTM, BaseValue>,
+  rendered: RenderedChangeSet<TTM>
+): void {
+  for (const [type, id, value] of rendered.sets.entries()) {
+    state.set(type, id, value);
+  }
+  for (const [type, id] of rendered.deletes.entries()) {
+    state.delete(type, id);
   }
 }

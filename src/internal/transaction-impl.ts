@@ -1,4 +1,3 @@
-import { ChangeSet } from "../log2log";
 import {
   BaseTypeToModel,
   BaseValue,
@@ -8,6 +7,8 @@ import {
 } from "../model";
 import { Transaction } from "../transaction";
 import { BiMap } from "../util/bi-map";
+import { ChangeSet } from "../util/change-set";
+import { RenderedChangeSet } from "../util/rendered-change-set";
 
 /**
  * A single active mutable value within a transaction.
@@ -27,22 +28,24 @@ interface MutableEntry {
 /**
  * Default implementation of {@link Transaction}, accumulating the changes made
  * during a single mutation so that they can be committed via {@link getChanges}.
- *
- * Internal to the library: not exported from index.ts.
  */
 export class TransactionImpl<TTM extends BaseTypeToModel>
   implements Transaction<TTM>
 {
   /**
    * Values written via {@link set} that have not (since) been turned into a
-   * mutable. Committed as blind sets.
+   * mutable or deleted. Committed as blind sets.
    *
-   * Invariant: a given (type, id) appears in at most one of `blindSets` and
-   * `mutables` at a time.
+   * Invariant: a given (type, id) appears in at most one of
+   * blindSets, mutables, or deletes at a time.
    */
   private readonly blindSets = new BiMap<TTM, BaseValue>();
   /** Active mutable values, keyed by (type, id). */
   private readonly mutables = new BiMap<TTM, MutableEntry>();
+  /**
+   * Deleted values.
+   */
+  private readonly deletes = new BiMap<TTM, true>();
 
   constructor(
     private readonly typeToModel: TTM,
@@ -57,15 +60,19 @@ export class TransactionImpl<TTM extends BaseTypeToModel>
   get<K extends keyof TTM>(type: K, id: string): ValueType<TTM, K> | undefined {
     const t = type as keyof TTM & string;
 
+    // A blind set shows up for future reads.
+    const blind = this.blindSets.get(t, id);
+    if (blind !== undefined) {
+      return blind as ValueType<TTM, K>;
+    }
     // A mutable's changes show up for future reads.
     const entry = this.mutables.get(t, id);
     if (entry !== undefined) {
       return entry.mutable.__toImmutable() as ValueType<TTM, K>;
     }
-    // A blind set shows up for future reads.
-    const blind = this.blindSets.get(t, id);
-    if (blind !== undefined) {
-      return blind as ValueType<TTM, K>;
+    // A deleted value reads as absent, even if it still exists in the state.
+    if (this.deletes.has(t, id)) {
+      return undefined;
     }
     // Otherwise fall through to the state.
     const stored = this.state.get(t, id);
@@ -113,11 +120,16 @@ export class TransactionImpl<TTM extends BaseTypeToModel>
       fromState = false;
       this.blindSets.delete(t, id);
     } else {
-      const stored = this.state.get(t, id);
+      // Get the value from this.state filtered by this.deletes.
+      const stored = this.deletes.has(t, id)
+        ? undefined
+        : this.state.get(t, id);
       if (stored !== undefined) {
         currentValue = stored;
         fromState = true;
       } else if (initialValue !== undefined) {
+        // The value is new or was deleted locally.
+        // Either way, we need to eventually commit it as a set.
         currentValue = initialValue;
         fromState = false;
       } else {
@@ -127,6 +139,8 @@ export class TransactionImpl<TTM extends BaseTypeToModel>
 
     const model = this.typeToModel[t];
     const mutable = model.toMutable(currentValue as ValueType<TTM, K>);
+    // Creating a mutable overrides any earlier delete of this key.
+    this.deletes.delete(t, id);
     this.mutables.set(t, id, { mutable, fromState });
     return mutable as MutableValueType<TTM, K>;
   }
@@ -147,33 +161,64 @@ export class TransactionImpl<TTM extends BaseTypeToModel>
     const t = value.type as keyof TTM & string;
     // Override any active mutable version: its changes will not be committed.
     this.mutables.delete(t, value.id);
+    // A set overrides any earlier delete of this key.
+    this.deletes.delete(t, value.id);
+
     this.blindSets.set(t, value.id, value);
   }
 
+  delete<K extends keyof TTM>(type: K, id: string): void {
+    const t = type as keyof TTM & string;
+    // Override any pending set or active mutable version: the net effect is a
+    // delete, so their changes will not be committed.
+    this.blindSets.delete(t, id);
+    this.mutables.delete(t, id);
+
+    this.deletes.set(t, id, true);
+  }
+
   /**
-   * Returns all changes made during the transaction: blind sets (full values)
-   * and updates (lists of update objects) for changes to mutable values.
+   * Returns the changes made during the transaction, as a ChangeSet and
+   * RenderedChangeSet.
+   *
+   * **Warning**: Do not mutate the return values internally, as they share state.
    */
-  getChanges(): ChangeSet<TTM> {
+  getChanges(): { changes: ChangeSet<TTM>; rendered: RenderedChangeSet<TTM> } {
     const blindSets = new BiMap<TTM, BaseValue>();
-    const updates = new BiMap<TTM, { value: BaseValue; updates: object[] }>();
+    const updates = new BiMap<TTM, object[]>();
+    const allSets = new BiMap<TTM, BaseValue>();
 
     for (const [type, id, value] of this.blindSets.entries()) {
       blindSets.set(type, id, value);
+      allSets.set(type, id, value);
     }
 
     for (const [type, id, entry] of this.mutables.entries()) {
       if (entry.fromState) {
-        // An existing value was mutated: commit the changes as updates.
+        // An existing value was mutated: commit the changes as updates, and
+        // record its final value (straight from __finish) in allSets.
         const change = entry.mutable.__finish();
-        if (change.updates.length > 0) updates.set(type, id, change);
+        if (change.updates.length > 0) {
+          updates.set(type, id, change.updates);
+          allSets.set(type, id, change.value);
+        }
       } else {
         // A new value (set or created from initialValue): commit the final
         // value as a blind set, even if no further changes were made.
-        blindSets.set(type, id, entry.mutable.__toImmutable());
+        const value = entry.mutable.__toImmutable();
+        blindSets.set(type, id, value);
+        allSets.set(type, id, value);
       }
     }
 
-    return { blindSets, updates };
+    return {
+      changes: new ChangeSet(
+        this.typeToModel,
+        blindSets,
+        updates,
+        this.deletes
+      ),
+      rendered: new RenderedChangeSet(this.typeToModel, allSets, this.deletes),
+    };
   }
 }
