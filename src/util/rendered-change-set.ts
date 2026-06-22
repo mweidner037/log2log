@@ -37,7 +37,21 @@ export class RenderedChangeSet<TTM extends BaseTypeToModel> {
   }
 
   /**
-   * Applies a {@link ChangeSet} on top of this one, modifying this one in-place.
+   * Applies a RenderedChangeSet on top of this, modifying this in-place.
+   */
+  applyRendered(rendered: RenderedChangeSet<TTM>): void {
+    for (const [type, id, value] of rendered.sets.entries()) {
+      this.recordSet(type, id, value);
+    }
+
+    for (const [type, id] of rendered.deletes.entries()) {
+      this.recordDelete(type, id);
+    }
+  }
+
+  // TODO: Delete if unused.
+  /**
+   * Applies a {@link ChangeSet} on top of this one, modifying this in-place.
    *
    * You must supply the state of the key-value store either before or after
    * the current state of the RenderedChangeSet, so that we can process updates

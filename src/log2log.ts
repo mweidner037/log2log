@@ -6,27 +6,12 @@ import { BiMap } from "./util/bi-map";
 import { ChangeSet } from "./util/change-set";
 import { RenderedChangeSet } from "./util/rendered-change-set";
 
-export type ApplyMutationResult<TTM extends BaseTypeToModel> =
+export type MutationResult<TTM extends BaseTypeToModel> =
   | {
       isSuccess: true;
       changes: ChangeSet<TTM>;
     }
   | { isSuccess: false; error: unknown };
-
-/**
- * The result of {@link Log2Log.applyMutations}: the per-mutation results plus
- * the final value of every changed (set or updated) key, accumulated across all
- * mutations.
- */
-export interface ServerMutationsResult<TTM extends BaseTypeToModel> {
-  results: ApplyMutationResult<TTM>[];
-  /**
-   * The overall changes across all mutations, rendered as final values. Since a
-   * {@link ChangeSet}'s updates record only their update objects, this is how to
-   * recover updated keys' resulting values.
-   */
-  rendered: RenderedChangeSet<TTM>;
-}
 
 /**
  * Converts a log of mutations into a log of key-value store changes.
@@ -45,7 +30,7 @@ export class Log2Log<TTM extends BaseTypeToModel> {
     readonly typeToModel: TTM,
     readonly initialState: SavedState<TTM>
   ) {
-    // Load the initial state so that mutations can read existing values.
+    // Load initial state.
     for (const type of Object.keys(typeToModel) as (keyof TTM & string)[]) {
       const model = typeToModel[type];
       const savedValues = initialState[type];
@@ -58,14 +43,19 @@ export class Log2Log<TTM extends BaseTypeToModel> {
   }
 
   /**
-   * Applies a sequence of mutations, returning their success/failure statuses
-   * and the overall changes.
+   * Applies a sequence of mutations, returning their isSuccess statuses,
+   * individual ChangeSets/errors, and overall changes (rendered).
    *
    * Any mutations that throw become no-ops.
    */
-  applyMutations(mutations: Mutation<TTM>[]): ServerMutationsResult<TTM> {
-    const results: ApplyMutationResult<TTM>[] = [];
-    // The overall changes across all mutations, as final values and deletions.
+  applyMutations(mutations: Mutation<TTM>[]): {
+    results: MutationResult<TTM>[];
+    /**
+     * The overall changes across all mutations, rendered as final values.
+     */
+    rendered: RenderedChangeSet<TTM>;
+  } {
+    const results: MutationResult<TTM>[] = [];
     const rendered = new RenderedChangeSet<TTM>(this.typeToModel);
 
     for (const mutation of mutations) {
@@ -86,17 +76,11 @@ export class Log2Log<TTM extends BaseTypeToModel> {
       // already holds each changed key's final value (blind-set or updated), so
       // apply those directly instead of replaying updates. recordSet/recordDelete
       // keep `rendered` consistent: a later set un-deletes a key and vice versa.
-      const { changes, allSets: changedValues } = transaction.getChanges();
-      for (const [type, id, value] of changedValues.entries()) {
-        this.state.set(type, id, value);
-        rendered.recordSet(type, id, value);
-      }
-      for (const [type, id] of changes.deletes.entries()) {
-        this.state.delete(type, id);
-        rendered.recordDelete(type, id);
-      }
-
+      const { changes, allSets } = transaction.getChanges();
       results.push({ isSuccess: true, changes });
+      rendered.applyRendered(
+        new RenderedChangeSet(this.typeToModel, allSets, changes.deletes)
+      );
     }
 
     return { results, rendered };

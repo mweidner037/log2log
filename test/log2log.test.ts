@@ -1,10 +1,10 @@
 import { assert } from "chai";
 import { describe, it } from "mocha";
 
-import { ApplyMutationResult, Log2Log } from "../src/log2log";
-import { ChangeSet } from "../src/util/change-set";
+import { Log2Log, MutationResult } from "../src/log2log";
 import { BaseValue } from "../src/model";
 import { Mutation } from "../src/mutation";
+import { ChangeSet } from "../src/util/change-set";
 import {
   Counter,
   Register,
@@ -32,14 +32,14 @@ function mut(
 }
 
 /** Asserts that a result succeeded and returns its changes. */
-function expectSuccess(result: ApplyMutationResult<TTM>): ChangeSet<TTM> {
+function expectSuccess(result: MutationResult<TTM>): ChangeSet<TTM> {
   assert.isTrue(result.isSuccess);
   if (!result.isSuccess) throw new Error("unreachable");
   return result.changes;
 }
 
 /** Asserts that a result failed and returns its error. */
-function expectError(result: ApplyMutationResult<TTM>): unknown {
+function expectError(result: MutationResult<TTM>): unknown {
   assert.isFalse(result.isSuccess);
   if (result.isSuccess) throw new Error("unreachable");
   return result.error;

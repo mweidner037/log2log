@@ -18,14 +18,15 @@ export class ReconciliationClient<TTM extends BaseTypeToModel> {
   private serverState: PersistentBiMap<TTM, BaseValue>;
   /** The server state with all pending local mutations applied on top. */
   private optimisticState: PersistentBiMap<TTM, BaseValue>;
+  /** Keyed by mutation id. Iterator order matches the original applyOptimisticMutation order. */
+  private pendingMutations = new Map<string, Mutation<TTM>>();
+
   /**
    * The optimistic overlay over the server state: the keys that the pending
    * mutations have set (as blind sets of their optimistic values) or deleted.
    * In other words, the keys where optimisticState may differ from serverState.
    */
   private optimisticOverlay: RenderedChangeSet<TTM>;
-  /** Keyed by mutation id. Iterator order matches the original applyOptimisticMutation order. */
-  private pendingMutations = new Map<string, Mutation<TTM>>();
 
   constructor(
     readonly typeToModel: TTM,
@@ -33,8 +34,7 @@ export class ReconciliationClient<TTM extends BaseTypeToModel> {
   ) {
     this.optimisticOverlay = new RenderedChangeSet<TTM>(this.typeToModel);
 
-    // Load the initial state. The optimistic state starts equal to the server
-    // state, since there are no pending mutations yet.
+    // Load initial state.
     let state = PersistentBiMap.empty<TTM, BaseValue>();
     for (const type of Object.keys(typeToModel) as (keyof TTM & string)[]) {
       const model = typeToModel[type];
