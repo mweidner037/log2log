@@ -66,7 +66,7 @@ export class Log2Log<TTM extends BaseTypeToModel> {
   applyMutations(mutations: Mutation<TTM>[]): ServerMutationsResult<TTM> {
     const results: ApplyMutationResult<TTM>[] = [];
     // The overall changes across all mutations, as final values and deletions.
-    const rendered = new RenderedChangeSet<TTM>();
+    const rendered = new RenderedChangeSet<TTM>(this.typeToModel);
 
     for (const mutation of mutations) {
       const transaction = new TransactionImpl(this.typeToModel, this.state);

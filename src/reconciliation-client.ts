@@ -23,7 +23,7 @@ export class ReconciliationClient<TTM extends BaseTypeToModel> {
    * mutations have set (as blind sets of their optimistic values) or deleted.
    * In other words, the keys where optimisticState may differ from serverState.
    */
-  private optimisticOverlay = new RenderedChangeSet<TTM>();
+  private optimisticOverlay: RenderedChangeSet<TTM>;
   /** Keyed by mutation id. Iterator order matches the original applyOptimisticMutation order. */
   private pendingMutations = new Map<string, Mutation<TTM>>();
 
@@ -31,6 +31,8 @@ export class ReconciliationClient<TTM extends BaseTypeToModel> {
     readonly typeToModel: TTM,
     readonly initialState: SavedState<TTM>
   ) {
+    this.optimisticOverlay = new RenderedChangeSet<TTM>(this.typeToModel);
+
     // Load the initial state. The optimistic state starts equal to the server
     // state, since there are no pending mutations yet.
     let state = PersistentBiMap.empty<TTM, BaseValue>();
@@ -96,7 +98,7 @@ export class ReconciliationClient<TTM extends BaseTypeToModel> {
     // The mutation succeeded: commit its changes to the optimistic state and
     // remember it so that it can be rerun against future server states. The
     // changes also extend the optimistic overlay over the server state.
-    const result = new RenderedChangeSet<TTM>();
+    const result = new RenderedChangeSet<TTM>(this.typeToModel);
     const { changes, allSets } = transaction.getChanges();
     this.optimisticState = this.applyOverlay(
       this.optimisticState,
@@ -134,13 +136,13 @@ export class ReconciliationClient<TTM extends BaseTypeToModel> {
 
     // Apply the server's changes directly to the server state. Accumulate the
     // affected keys, which feed into the returned optimistic changes.
-    const result = new RenderedChangeSet<TTM>();
+    const result = new RenderedChangeSet<TTM>(this.typeToModel);
     this.serverState = this.applyChanges(this.serverState, changeSet, result);
 
     // Rebuild the optimistic overlay from scratch, remembering the previous one
     // so that we can roll back keys it no longer covers.
     const prevOverlay = this.optimisticOverlay;
-    this.optimisticOverlay = new RenderedChangeSet<TTM>();
+    this.optimisticOverlay = new RenderedChangeSet<TTM>(this.typeToModel);
 
     // Rerun the remaining pending mutations on top of the new server state to
     // rebuild the optimistic state. A rerun that throws is skipped (a no-op),
