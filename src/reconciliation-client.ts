@@ -94,13 +94,7 @@ export class ReconciliationClient<TTM extends BaseTypeToModel> {
 
     // The mutation succeeded: commit its changes to the optimistic state, and
     // remember it so that it can be rerun against future server states.
-    const { changes, allSets } = transaction.getChanges();
-    const rendered = new RenderedChangeSet(
-      this.typeToModel,
-      allSets,
-      changes.deletes
-    );
-
+    const { rendered } = transaction.getChanges();
     this.optimisticState = changeState(this.optimisticState, rendered);
     this.optimisticDiff.applyRendered(rendered);
 
@@ -163,12 +157,7 @@ export class ReconciliationClient<TTM extends BaseTypeToModel> {
         continue;
       }
 
-      const { changes, allSets } = transaction.getChanges();
-      const trRendered = new RenderedChangeSet(
-        this.typeToModel,
-        allSets,
-        changes.deletes
-      );
+      const { rendered: trRendered } = transaction.getChanges();
       this.optimisticState = changeState(this.optimisticState, trRendered);
       this.optimisticDiff.applyRendered(trRendered);
       overallChanges.applyRendered(trRendered);

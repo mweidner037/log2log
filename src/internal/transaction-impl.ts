@@ -8,6 +8,7 @@ import {
 import { Transaction } from "../transaction";
 import { BiMap } from "../util/bi-map";
 import { ChangeSet } from "../util/change-set";
+import { RenderedChangeSet } from "../util/rendered-change-set";
 
 /**
  * A single active mutable value within a transaction.
@@ -179,16 +180,12 @@ export class TransactionImpl<TTM extends BaseTypeToModel>
   }
 
   /**
-   * Returns the changes made during the transaction, plus the final value of
-   * every changed and non-deleted key.
+   * Returns the changes made during the transaction, as a ChangeSet and
+   * RenderedChangeSet.
    *
-   * `changes` is a minimal {@link ChangeSet}: blind sets (full values) and
-   * updates (lists of update objects) for changes to mutable values, plus the
-   * deleted keys. `allSets` holds the final value of every set or updated key,
-   * so consumers can recover updated keys' resulting values without replaying
-   * their updates.
+   * **Warning**: Do not mutate the return values internally, as they share state.
    */
-  getChanges(): { changes: ChangeSet<TTM>; allSets: BiMap<TTM, BaseValue> } {
+  getChanges(): { changes: ChangeSet<TTM>; rendered: RenderedChangeSet<TTM> } {
     const blindSets = new BiMap<TTM, BaseValue>();
     const updates = new BiMap<TTM, object[]>();
     const allSets = new BiMap<TTM, BaseValue>();
@@ -223,7 +220,7 @@ export class TransactionImpl<TTM extends BaseTypeToModel>
         updates,
         this.deletes
       ),
-      allSets,
+      rendered: new RenderedChangeSet(this.typeToModel, allSets, this.deletes),
     };
   }
 }

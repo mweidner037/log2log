@@ -70,12 +70,7 @@ export class Log2Log<TTM extends BaseTypeToModel> {
         continue;
       }
 
-      const { changes, allSets } = transaction.getChanges();
-      const trRendered = new RenderedChangeSet(
-        this.typeToModel,
-        allSets,
-        changes.deletes
-      );
+      const { changes, rendered: trRendered } = transaction.getChanges();
       changeState(this.state, trRendered);
       rendered.applyRendered(trRendered);
       results.push({ isSuccess: true, changes });
