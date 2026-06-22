@@ -63,7 +63,6 @@ export interface Transaction<TTM extends BaseTypeToModel> {
 
   /**
    * Deletes the value with the given type and id from the store.
-   * Deleting a value that does not exist is a no-op.
    *
    * Note: Any active mutable versions of the value are overridden
    * (their changes will not be committed). Future reads and writes to
