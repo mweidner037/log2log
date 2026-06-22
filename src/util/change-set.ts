@@ -28,11 +28,11 @@ export class ChangeSet<TTM extends BaseTypeToModel> {
     /**
      * All values set directly, including new values.
      */
-    readonly blindSets: BiMap<TTM, BaseValue>,
+    readonly blindSets: BiMap<TTM, BaseValue> = new BiMap(),
     /**
      * The updates for each value changed via a MutableValue.
      */
-    readonly updates: BiMap<TTM, object[]>,
+    readonly updates: BiMap<TTM, object[]> = new BiMap(),
     /**
      * The deleted keys, represented using a set-as-map.
      */
@@ -147,7 +147,7 @@ export function mergeChangeSets<TTM extends BaseTypeToModel>(
   typeToModel: TTM,
   changeSets: Iterable<ChangeSet<TTM>>
 ): ChangeSet<TTM> {
-  const ans = new ChangeSet(typeToModel, new BiMap(), new BiMap(), new BiMap());
+  const ans = new ChangeSet(typeToModel);
   for (const changeSet of changeSets) {
     ans.apply(changeSet);
   }
