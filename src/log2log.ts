@@ -70,17 +70,15 @@ export class Log2Log<TTM extends BaseTypeToModel> {
         continue;
       }
 
-      // The mutation succeeded. Apply its changes to this.state so that the
-      // next mutation sees them, recording each key's change in `rendered`, and
-      // report the changes as this mutation's result. The transaction's allSets
-      // already holds each changed key's final value (blind-set or updated), so
-      // apply those directly instead of replaying updates. recordSet/recordDelete
-      // keep `rendered` consistent: a later set un-deletes a key and vice versa.
       const { changes, allSets } = transaction.getChanges();
-      results.push({ isSuccess: true, changes });
-      rendered.applyRendered(
-        new RenderedChangeSet(this.typeToModel, allSets, changes.deletes)
+      const trRendered = new RenderedChangeSet(
+        this.typeToModel,
+        allSets,
+        changes.deletes
       );
+      changeState(this.state, trRendered);
+      rendered.applyRendered(trRendered);
+      results.push({ isSuccess: true, changes });
     }
 
     return { results, rendered };
@@ -101,5 +99,17 @@ export class Log2Log<TTM extends BaseTypeToModel> {
         string];
     }
     return result;
+  }
+}
+
+function changeState<TTM extends BaseTypeToModel>(
+  state: BiMap<TTM, BaseValue>,
+  rendered: RenderedChangeSet<TTM>
+): void {
+  for (const [type, id, value] of rendered.sets.entries()) {
+    state.set(type, id, value);
+  }
+  for (const [type, id] of rendered.deletes.entries()) {
+    state.delete(type, id);
   }
 }

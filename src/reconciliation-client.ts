@@ -178,12 +178,6 @@ export class ReconciliationClient<TTM extends BaseTypeToModel> {
   }
 }
 
-/**
- * Applies the given final values (e.g. a transaction's `allSets`) and
- * deletions to `state`, returning the resulting state. Each change is also
- * recorded in every `overlays` entry (later changes override earlier ones,
- * and sets and deletions stay disjoint).
- */
 function changeState<TTM extends BaseTypeToModel>(
   state: PersistentBiMap<TTM, BaseValue>,
   rendered: RenderedChangeSet<TTM>
