@@ -29,8 +29,6 @@ export class ReconciliationClient<TTM extends BaseTypeToModel> {
     readonly typeToModel: TTM,
     readonly initialState: SavedState<TTM>
   ) {
-    this.optimisticDiff = new RenderedChangeSet(typeToModel);
-
     // Load initial state.
     let state = PersistentBiMap.empty<TTM, BaseValue>();
     for (const type of Object.keys(typeToModel) as (keyof TTM & string)[]) {
@@ -44,6 +42,7 @@ export class ReconciliationClient<TTM extends BaseTypeToModel> {
     }
     this.serverState = state;
     this.optimisticState = state;
+    this.optimisticDiff = new RenderedChangeSet(typeToModel);
   }
 
   /**
@@ -132,8 +131,7 @@ export class ReconciliationClient<TTM extends BaseTypeToModel> {
     const overallChanges = this.optimisticDiff.invert(this.serverState);
 
     // Apply the changeSet to this.serverState.
-    const serverRendered = new RenderedChangeSet(this.typeToModel);
-    serverRendered.apply(changeSet, this.serverState);
+    const serverRendered = changeSet.render(this.serverState);
     this.serverState = changeState(this.serverState, serverRendered);
     overallChanges.applyRendered(serverRendered);
 

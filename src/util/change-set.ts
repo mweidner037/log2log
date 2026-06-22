@@ -1,5 +1,6 @@
 import { BaseTypeToModel, BaseValue } from "../model";
 import { BiMap } from "./bi-map";
+import { RenderedChangeSet } from "./rendered-change-set";
 
 /**
  * JSON-serializable form of a {@link ChangeSet}.
@@ -81,6 +82,20 @@ export class ChangeSet<TTM extends BaseTypeToModel> {
 
       this.deletes.set(type, id, true);
     }
+  }
+
+  /**
+   * Renders this ChangeSet on top of the given state.
+   */
+  render(state: {
+    /**
+     * Gets the value at (type, id), or undefined if not present.
+     */
+    get(type: keyof TTM & string, id: string): BaseValue | undefined;
+  }): RenderedChangeSet<TTM> {
+    const rendered = new RenderedChangeSet(this.typeToModel);
+    rendered.apply(this, state);
+    return rendered;
   }
 
   save(): SavedChangeSet<TTM> {

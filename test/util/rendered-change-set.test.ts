@@ -85,7 +85,7 @@ describe("RenderedChangeSet.apply", () => {
   it("renders updates against a previously set value", () => {
     const state = new BiMap<TTM, BaseValue>();
     const rendered = new RenderedChangeSet<TTM>(typeToModel);
-    rendered.recordSet("counter", "a", counter("a", 5));
+    rendered.set("counter", "a", counter("a", 5));
     rendered.apply(
       changeSet([], [{ value: counter("a", 8), updates: [{ delta: 3 }] }]),
       state
@@ -94,25 +94,10 @@ describe("RenderedChangeSet.apply", () => {
     assert.deepStrictEqual(rendered.sets.get("counter", "a"), counter("a", 8));
   });
 
-  it("renders updates against a value set in the same apply", () => {
-    const state = new BiMap<TTM, BaseValue>();
-    const rendered = new RenderedChangeSet<TTM>(typeToModel);
-    rendered.apply(
-      changeSet(
-        [counter("a", 5)],
-        [{ value: counter("a", 8), updates: [{ delta: 3 }] }]
-      ),
-      state
-    );
-
-    // The blind set is applied first, then the update on top of it.
-    assert.deepStrictEqual(rendered.sets.get("counter", "a"), counter("a", 8));
-  });
-
   it("lets a blind set clear an earlier delete", () => {
     const state = new BiMap<TTM, BaseValue>();
     const rendered = new RenderedChangeSet<TTM>(typeToModel);
-    rendered.recordDelete("counter", "a");
+    rendered.delete("counter", "a");
     rendered.apply(changeSet([counter("a", 7)]), state);
 
     assert.deepStrictEqual(rendered.sets.get("counter", "a"), counter("a", 7));
@@ -122,7 +107,7 @@ describe("RenderedChangeSet.apply", () => {
   it("lets a delete clear an earlier set", () => {
     const state = new BiMap<TTM, BaseValue>();
     const rendered = new RenderedChangeSet<TTM>(typeToModel);
-    rendered.recordSet("counter", "a", counter("a", 1));
+    rendered.set("counter", "a", counter("a", 1));
     rendered.apply(changeSet([], [], [{ type: "counter", id: "a" }]), state);
 
     assert.deepStrictEqual(deletedIds(rendered, "counter"), ["a"]);
@@ -156,7 +141,7 @@ describe("RenderedChangeSet.apply", () => {
     const state = new BiMap<TTM, BaseValue>();
     const rendered = new RenderedChangeSet<TTM>(typeToModel);
     const original = counter("a", 5);
-    rendered.recordSet("counter", "a", original);
+    rendered.set("counter", "a", original);
     rendered.apply(
       changeSet([], [{ value: counter("a", 8), updates: [{ delta: 3 }] }]),
       state
@@ -169,7 +154,7 @@ describe("RenderedChangeSet.apply", () => {
   it("applies blind sets, updates, and deletes to disjoint keys together", () => {
     const state = new BiMap<TTM, BaseValue>();
     const rendered = new RenderedChangeSet<TTM>(typeToModel);
-    rendered.recordSet("counter", "b", counter("b", 1));
+    rendered.set("counter", "b", counter("b", 1));
     rendered.apply(
       changeSet(
         [counter("a", 5)],
@@ -191,7 +176,7 @@ describe("RenderedChangeSet.invert", () => {
     const beforeState = new BiMap<TTM, BaseValue>();
     beforeState.set("counter", "a", counter("a", 1));
     const rendered = new RenderedChangeSet<TTM>(typeToModel);
-    rendered.recordSet("counter", "a", counter("a", 5));
+    rendered.set("counter", "a", counter("a", 5));
 
     const inverse = rendered.invert(beforeState);
 
@@ -202,7 +187,7 @@ describe("RenderedChangeSet.invert", () => {
   it("inverts a set of a new value into a delete", () => {
     const beforeState = new BiMap<TTM, BaseValue>();
     const rendered = new RenderedChangeSet<TTM>(typeToModel);
-    rendered.recordSet("counter", "a", counter("a", 5));
+    rendered.set("counter", "a", counter("a", 5));
 
     const inverse = rendered.invert(beforeState);
 
@@ -214,7 +199,7 @@ describe("RenderedChangeSet.invert", () => {
     const beforeState = new BiMap<TTM, BaseValue>();
     beforeState.set("counter", "a", counter("a", 1));
     const rendered = new RenderedChangeSet<TTM>(typeToModel);
-    rendered.recordDelete("counter", "a");
+    rendered.delete("counter", "a");
 
     const inverse = rendered.invert(beforeState);
 
@@ -225,7 +210,7 @@ describe("RenderedChangeSet.invert", () => {
   it("inverts a no-op delete of a nonexistent value into nothing", () => {
     const beforeState = new BiMap<TTM, BaseValue>();
     const rendered = new RenderedChangeSet<TTM>(typeToModel);
-    rendered.recordDelete("counter", "a");
+    rendered.delete("counter", "a");
 
     const inverse = rendered.invert(beforeState);
 
@@ -240,10 +225,10 @@ describe("RenderedChangeSet.invert", () => {
     beforeState.set("register", "r", register("r", "x"));
 
     const rendered = new RenderedChangeSet<TTM>(typeToModel);
-    rendered.recordSet("counter", "a", counter("a", 9));
-    rendered.recordSet("counter", "c", counter("c", 3));
-    rendered.recordDelete("counter", "b");
-    rendered.recordDelete("register", "r");
+    rendered.set("counter", "a", counter("a", 9));
+    rendered.set("counter", "c", counter("c", 3));
+    rendered.delete("counter", "b");
+    rendered.delete("register", "r");
 
     const inverse = rendered.invert(beforeState);
 

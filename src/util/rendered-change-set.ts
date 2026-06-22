@@ -68,20 +68,19 @@ export class RenderedChangeSet<TTM extends BaseTypeToModel> {
    */
   applyRendered(rendered: RenderedChangeSet<TTM>): void {
     for (const [type, id, value] of rendered.sets.entries()) {
-      this.recordSet(type, id, value);
+      this.set(type, id, value);
     }
 
     for (const [type, id] of rendered.deletes.entries()) {
-      this.recordDelete(type, id);
+      this.delete(type, id);
     }
   }
 
-  // TODO: Delete if unused.
   /**
    * Applies a {@link ChangeSet} on top of this one, modifying this in-place.
    *
    * You must supply the state of the key-value store either before or after
-   * the current state of the RenderedChangeSet, so that we can process updates
+   * the current state of this RenderedChangeSet, so that we can process updates
    * to values that we have not changed.
    */
   apply(
@@ -94,7 +93,7 @@ export class RenderedChangeSet<TTM extends BaseTypeToModel> {
     }
   ): void {
     for (const [type, id, value] of changeSet.blindSets.entries()) {
-      this.recordSet(type, id, value);
+      this.set(type, id, value);
     }
 
     for (const [type, id, valueUpdates] of changeSet.updates.entries()) {
@@ -111,7 +110,7 @@ export class RenderedChangeSet<TTM extends BaseTypeToModel> {
         );
       }
 
-      this.recordSet(
+      this.set(
         type,
         id,
         this.typeToModel[type].applyUpdates(currentValue, valueUpdates)
@@ -119,18 +118,18 @@ export class RenderedChangeSet<TTM extends BaseTypeToModel> {
     }
 
     for (const [type, id] of changeSet.deletes.entries()) {
-      this.recordDelete(type, id);
+      this.delete(type, id);
     }
   }
 
   /** Records (type, id) as a set of `value`, clearing any deletion of it. */
-  recordSet(type: keyof TTM & string, id: string, value: BaseValue): void {
+  set(type: keyof TTM & string, id: string, value: BaseValue): void {
     this.sets.set(type, id, value);
     this.deletes.delete(type, id);
   }
 
   /** Records (type, id) as a deletion, clearing any set of it. */
-  recordDelete(type: keyof TTM & string, id: string): void {
+  delete(type: keyof TTM & string, id: string): void {
     this.deletes.set(type, id, true);
     this.sets.delete(type, id);
   }

@@ -28,8 +28,6 @@ interface MutableEntry {
 /**
  * Default implementation of {@link Transaction}, accumulating the changes made
  * during a single mutation so that they can be committed via {@link getChanges}.
- *
- * Internal to the library: not exported from index.ts.
  */
 export class TransactionImpl<TTM extends BaseTypeToModel>
   implements Transaction<TTM>
@@ -45,7 +43,7 @@ export class TransactionImpl<TTM extends BaseTypeToModel>
   /** Active mutable values, keyed by (type, id). */
   private readonly mutables = new BiMap<TTM, MutableEntry>();
   /**
-   * Keys deleted via {@link delete}. Committed as deletions.
+   * Deleted values.
    */
   private readonly deletes = new BiMap<TTM, true>();
 
