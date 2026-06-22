@@ -174,6 +174,18 @@ describe("ReconciliationClient", () => {
         count: 18,
       });
     });
+
+    it("optimistically deletes a value, returning the deletion", () => {
+      const client = newClient();
+      const changes = client.applyOptimisticMutation(
+        mut((tx) => tx.delete("counter", "a"), "m1")
+      );
+
+      assert.isUndefined(client.get("counter", "a"));
+      assert.strictEqual(changes.sets.size, 0);
+      assert.strictEqual(changes.deletes.size, 1);
+      assert.isTrue(changes.deletes.has("counter", "a"));
+    });
   });
 
   describe("applyServerChanges", () => {
@@ -364,7 +376,49 @@ describe("ReconciliationClient", () => {
       const changes = client.applyServerChanges(emptyChangeSet(), ["m1"]);
       assert.isUndefined(client.get("counter", "b"));
       assert.strictEqual(changes.sets.size, 0);
-      assert.deepEqual([...changes.deletes.entries()], [["counter", ["b"]]]);
+      assert.strictEqual(changes.deletes.size, 1);
+      assert.isTrue(changes.deletes.has("counter", "b"));
+    });
+
+    it("applies a server-side delete with no pending mutations", () => {
+      const client = newClient();
+
+      const server = newServer();
+      const changes = serverChanges(
+        server,
+        mut((tx) => tx.delete("counter", "a"))
+      );
+
+      const rendered = client.applyServerChanges(changes, []);
+      assert.isUndefined(client.get("counter", "a"));
+      assert.strictEqual(rendered.sets.size, 0);
+      assert.strictEqual(rendered.deletes.size, 1);
+      assert.isTrue(rendered.deletes.has("counter", "a"));
+    });
+
+    it("keeps an optimistic value alive over a server delete of another key", () => {
+      const client = newClient();
+      // Optimistically bump counter "a".
+      client.applyOptimisticMutation(mut(addCounter("a", 5), "m1"));
+
+      // The server deletes the register "r" (an unrelated key).
+      const server = newServer();
+      const changes = serverChanges(
+        server,
+        mut((tx) => tx.delete("register", "r"))
+      );
+
+      const rendered = client.applyServerChanges(changes, []);
+      // The unconfirmed optimistic mutation is reapplied on top of the new
+      // server state, so "a" stays bumped while "r" is deleted.
+      assert.deepEqual(client.get("counter", "a"), {
+        type: "counter",
+        id: "a",
+        count: 15,
+      });
+      assert.isUndefined(client.get("register", "r"));
+      assert.strictEqual(rendered.deletes.size, 1);
+      assert.isTrue(rendered.deletes.has("register", "r"));
     });
   });
 });

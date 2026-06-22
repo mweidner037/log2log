@@ -265,4 +265,112 @@ describe("applyMutations", () => {
       { type: "register", id: "r", value: "hello" },
     ]);
   });
+
+  it("reports a delete and removes the value from the state", () => {
+    const l2l = newLog2Log();
+    const {
+      results: [result],
+      rendered: { sets: allSets, deletes },
+    } = l2l.applyMutations([mut((tx) => tx.delete("counter", "a"))]);
+
+    const changes = expectSuccess(result);
+    assert.strictEqual(changes.blindSets.size, 0);
+    assert.strictEqual(changes.updates.size, 0);
+    assert.strictEqual(changes.deletes.size, 1);
+    assert.isTrue(changes.deletes.has("counter", "a"));
+
+    // The rendered result reports the delete and no longer the value.
+    assert.strictEqual(allSets.size, 0);
+    assert.strictEqual(deletes.size, 1);
+    assert.isTrue(deletes.has("counter", "a"));
+
+    // The value is gone from the state.
+    assert.deepEqual(l2l.save().counter, []);
+  });
+
+  it("a deleted value reads as absent within the same mutation", () => {
+    let read: Counter | undefined = { type: "counter", id: "a", count: -1 };
+    newLog2Log().applyMutations([
+      mut((tx) => {
+        tx.delete("counter", "a");
+        read = tx.get("counter", "a");
+      }),
+    ]);
+    assert.isUndefined(read);
+  });
+
+  it("deleting a nonexistent value still records the delete", () => {
+    const {
+      results: [result],
+    } = newLog2Log().applyMutations([
+      mut((tx) => tx.delete("counter", "missing")),
+    ]);
+    const changes = expectSuccess(result);
+    assert.strictEqual(changes.deletes.size, 1);
+    assert.isTrue(changes.deletes.has("counter", "missing"));
+  });
+
+  it("a set after a delete overrides it, reported as a blind set", () => {
+    const {
+      results: [result],
+      rendered: { deletes },
+    } = newLog2Log().applyMutations([
+      mut((tx) => {
+        tx.delete("counter", "a");
+        tx.set<"counter">({ type: "counter", id: "a", count: 99 });
+      }),
+    ]);
+    const changes = expectSuccess(result);
+    assert.strictEqual(changes.deletes.size, 0);
+    assert.strictEqual(deletes.size, 0);
+    assert.deepEqual(findSet<Counter>(changes, "counter", "a"), {
+      type: "counter",
+      id: "a",
+      count: 99,
+    });
+  });
+
+  it("a delete after a set overrides it, reported as a delete", () => {
+    const {
+      results: [result],
+      rendered: { sets: allSets, deletes },
+    } = newLog2Log().applyMutations([
+      mut((tx) => {
+        tx.set<"counter">({ type: "counter", id: "b", count: 3 });
+        tx.delete("counter", "b");
+      }),
+    ]);
+    const changes = expectSuccess(result);
+    assert.strictEqual(changes.blindSets.size, 0);
+    assert.strictEqual(changes.deletes.size, 1);
+    assert.isTrue(changes.deletes.has("counter", "b"));
+    assert.strictEqual(allSets.size, 0);
+    assert.strictEqual(deletes.size, 1);
+    assert.isTrue(deletes.has("counter", "b"));
+  });
+
+  it("getMutable resurrects a deleted value from initialValue", () => {
+    const {
+      results: [result],
+      rendered: { deletes },
+    } = newLog2Log().applyMutations([
+      mut((tx) => {
+        tx.delete("counter", "a");
+        assert.isUndefined(tx.getMutable("counter", "a"));
+        tx.getMutable("counter", "a", {
+          type: "counter",
+          id: "a",
+          count: 1,
+        }).add(4);
+      }),
+    ]);
+    const changes = expectSuccess(result);
+    assert.strictEqual(changes.deletes.size, 0);
+    assert.strictEqual(deletes.size, 0);
+    assert.deepEqual(findSet<Counter>(changes, "counter", "a"), {
+      type: "counter",
+      id: "a",
+      count: 5,
+    });
+  });
 });

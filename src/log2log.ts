@@ -24,9 +24,6 @@ export interface ServerMutationsResult<TTM extends BaseTypeToModel> {
    * The overall changes across all mutations, rendered as final values. Since a
    * {@link ChangeSet}'s updates record only their update objects, this is how to
    * recover updated keys' resulting values.
-   *
-   * Server mutations cannot delete values, so `rendered.deletes` is always
-   * empty; the field exists to match a client's {@link RenderedChangeSet}.
    */
   rendered: RenderedChangeSet<TTM>;
 }
@@ -68,7 +65,8 @@ export class Log2Log<TTM extends BaseTypeToModel> {
    */
   applyMutations(mutations: Mutation<TTM>[]): ServerMutationsResult<TTM> {
     const results: ApplyMutationResult<TTM>[] = [];
-    const allSets = new BiMap<TTM, BaseValue>();
+    // The overall changes across all mutations, as final values and deletions.
+    const rendered = new RenderedChangeSet<TTM>();
 
     for (const mutation of mutations) {
       const transaction = new TransactionImpl(this.typeToModel, this.state);
@@ -83,20 +81,25 @@ export class Log2Log<TTM extends BaseTypeToModel> {
       }
 
       // The mutation succeeded. Apply its changes to this.state so that the
-      // next mutation sees them, recording each key's final value in allSets,
-      // and report the changes as this mutation's result. The transaction's
-      // allSets already holds each changed key's final value (blind-set or
-      // updated), so apply those directly instead of replaying updates.
+      // next mutation sees them, recording each key's change in `rendered`, and
+      // report the changes as this mutation's result. The transaction's allSets
+      // already holds each changed key's final value (blind-set or updated), so
+      // apply those directly instead of replaying updates. recordSet/recordDelete
+      // keep `rendered` consistent: a later set un-deletes a key and vice versa.
       const { changes, allSets: changedValues } = transaction.getChanges();
       for (const [type, id, value] of changedValues.entries()) {
         this.state.set(type, id, value);
-        allSets.set(type, id, value);
+        rendered.recordSet(type, id, value);
+      }
+      for (const [type, id] of changes.deletes.entries()) {
+        this.state.delete(type, id);
+        rendered.recordDelete(type, id);
       }
 
       results.push({ isSuccess: true, changes });
     }
 
-    return { results, rendered: { sets: allSets, deletes: new Map() } };
+    return { results, rendered };
   }
 
   /**

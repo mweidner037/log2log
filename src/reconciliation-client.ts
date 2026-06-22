@@ -19,11 +19,11 @@ export class ReconciliationClient<TTM extends BaseTypeToModel> {
   /** The server state with all pending local mutations applied on top. */
   private optimisticState: PersistentBiMap<TTM, BaseValue>;
   /**
-   * The values that the pending mutations have written on top of the server
-   * state, as blind sets of their optimistic values. In other words, the keys
-   * where optimisticState may differ from serverState.
+   * The optimistic overlay over the server state: the keys that the pending
+   * mutations have set (as blind sets of their optimistic values) or deleted.
+   * In other words, the keys where optimisticState may differ from serverState.
    */
-  private optimisticChanges = new BiMap<TTM, BaseValue>();
+  private optimisticOverlay = new RenderedChangeSet<TTM>();
   /** Keyed by mutation id. Iterator order matches the original applyOptimisticMutation order. */
   private pendingMutations = new Map<string, Mutation<TTM>>();
 
@@ -81,8 +81,8 @@ export class ReconciliationClient<TTM extends BaseTypeToModel> {
    * indicate that the new server state already incorporates this mutation's
    * authoritative server changes.
    *
-   * @returns The changes to the current (optimistic) state. A mutation can only
-   * set values (never delete), so the result has no deletions.
+   * @returns The changes to the current (optimistic) state, as blind sets and
+   * deletions.
    */
   applyOptimisticMutation(mutation: Mutation<TTM>): RenderedChangeSet<TTM> {
     // Run the mutation on top of the current optimistic state. If it throws,
@@ -96,16 +96,17 @@ export class ReconciliationClient<TTM extends BaseTypeToModel> {
     // The mutation succeeded: commit its changes to the optimistic state and
     // remember it so that it can be rerun against future server states. The
     // changes also extend the optimistic overlay over the server state.
-    const sets = new BiMap<TTM, BaseValue>();
-    const { allSets } = transaction.getChanges();
-    this.optimisticState = this.applySets(
+    const result = new RenderedChangeSet<TTM>();
+    const { changes, allSets } = transaction.getChanges();
+    this.optimisticState = this.applyOverlay(
       this.optimisticState,
       allSets,
-      sets,
-      this.optimisticChanges
+      changes.deletes,
+      result,
+      this.optimisticOverlay
     );
     this.pendingMutations.set(mutation.id, mutation);
-    return { sets: sets, deletes: new Map() };
+    return result;
   }
 
   /**
@@ -132,14 +133,14 @@ export class ReconciliationClient<TTM extends BaseTypeToModel> {
     }
 
     // Apply the server's changes directly to the server state. Accumulate the
-    // affected values, which feed into the returned optimistic blind sets.
-    const sets = new BiMap<TTM, BaseValue>();
-    this.serverState = this.applyChanges(this.serverState, changeSet, sets);
+    // affected keys, which feed into the returned optimistic changes.
+    const result = new RenderedChangeSet<TTM>();
+    this.serverState = this.applyChanges(this.serverState, changeSet, result);
 
     // Rebuild the optimistic overlay from scratch, remembering the previous one
     // so that we can roll back keys it no longer covers.
-    const prevOptimisticChanges = this.optimisticChanges;
-    this.optimisticChanges = new BiMap<TTM, BaseValue>();
+    const prevOverlay = this.optimisticOverlay;
+    this.optimisticOverlay = new RenderedChangeSet<TTM>();
 
     // Rerun the remaining pending mutations on top of the new server state to
     // rebuild the optimistic state. A rerun that throws is skipped (a no-op),
@@ -159,70 +160,82 @@ export class ReconciliationClient<TTM extends BaseTypeToModel> {
         );
         continue;
       }
-      const { allSets } = transaction.getChanges();
-      optimisticState = this.applySets(
+      const { changes, allSets } = transaction.getChanges();
+      optimisticState = this.applyOverlay(
         optimisticState,
         allSets,
-        sets,
-        this.optimisticChanges
+        changes.deletes,
+        result,
+        this.optimisticOverlay
       );
     }
     this.optimisticState = optimisticState;
 
-    // Roll back keys that were in the old optimistic overlay but are no longer
-    // optimistically changed, so a consumer applying the result stays in sync
-    // with the new optimistic state. Each such key either reverts to its server
-    // value (a blind set) or, if the server has no such value (an optimistically
-    // created value whose server mutation was a no-op), is deleted.
-    const deletes = new Map<keyof TTM & string, string[]>();
-    for (const [type, id] of prevOptimisticChanges.entries()) {
-      if (!this.optimisticChanges.has(type, id)) {
+    // Roll back keys that the old optimistic overlay covered (as a set or a
+    // delete) but the new one no longer does, so a consumer applying the result
+    // stays in sync with the new optimistic state. Each such key either reverts
+    // to its server value (a blind set) or, if the server has no such value
+    // (e.g. an optimistically created value whose server mutation was a no-op),
+    // is deleted.
+    for (const prev of [prevOverlay.sets, prevOverlay.deletes]) {
+      for (const [type, id] of prev.entries()) {
+        if (
+          this.optimisticOverlay.sets.has(type, id) ||
+          this.optimisticOverlay.deletes.has(type, id)
+        ) {
+          continue;
+        }
         const serverValue = this.serverState.get(type, id);
         if (serverValue !== undefined) {
-          sets.set(type, id, serverValue);
+          result.recordSet(type, id, serverValue);
         } else {
-          const ids = deletes.get(type);
-          if (ids === undefined) deletes.set(type, [id]);
-          else ids.push(id);
+          result.recordDelete(type, id);
         }
       }
     }
 
-    return { sets: sets, deletes };
+    return result;
   }
 
   /**
-   * Applies the given final values (e.g. a transaction's `allSets`) to `state`
-   * as blind sets, returning the resulting state. Each value is also recorded
-   * in every `accumulators` map (later writes override earlier ones).
+   * Applies the given final values (e.g. a transaction's `allSets`) and
+   * deletions to `state`, returning the resulting state. Each change is also
+   * recorded in every `overlays` entry (later changes override earlier ones,
+   * and sets and deletions stay disjoint).
    */
-  private applySets(
+  private applyOverlay(
     state: PersistentBiMap<TTM, BaseValue>,
     sets: BiMap<TTM, BaseValue>,
-    ...accumulators: BiMap<TTM, BaseValue>[]
+    deletes: BiMap<TTM, true>,
+    ...overlays: RenderedChangeSet<TTM>[]
   ): PersistentBiMap<TTM, BaseValue> {
     let result = state;
     for (const [type, id, value] of sets.entries()) {
       result = result.set(type, id, value);
-      for (const acc of accumulators) acc.set(type, id, value);
+      for (const overlay of overlays) overlay.recordSet(type, id, value);
+    }
+    for (const [type, id] of deletes.entries()) {
+      result = result.delete(type, id);
+      for (const overlay of overlays) overlay.recordDelete(type, id);
     }
     return result;
   }
 
   /**
    * Applies the given {@link ChangeSet} to `state`, returning the resulting
-   * state. Each affected value is also recorded in every `accumulators` map as
-   * a blind set of its final value (later writes override earlier ones).
+   * state. Each affected key is also recorded in `overlay` as a blind set of
+   * its final value or as a deletion (later changes override earlier ones, and
+   * sets and deletions stay disjoint).
    */
   private applyChanges(
     state: PersistentBiMap<TTM, BaseValue>,
     changes: ChangeSet<TTM>,
-    ...accumulators: BiMap<TTM, BaseValue>[]
+    overlay: RenderedChangeSet<TTM>
   ): PersistentBiMap<TTM, BaseValue> {
     let result = state;
     for (const [type, id, value] of changes.blindSets.entries()) {
       result = result.set(type, id, value);
-      for (const acc of accumulators) acc.set(type, id, value);
+      overlay.recordSet(type, id, value);
     }
     for (const [type, id, valueUpdates] of changes.updates.entries()) {
       // The ChangeSet records only the update objects, so recover the final
@@ -231,7 +244,11 @@ export class ReconciliationClient<TTM extends BaseTypeToModel> {
       if (prev === undefined) continue;
       const value = this.typeToModel[type].applyUpdates(prev, valueUpdates);
       result = result.set(type, id, value);
-      for (const acc of accumulators) acc.set(type, id, value);
+      overlay.recordSet(type, id, value);
+    }
+    for (const [type, id] of changes.deletes.entries()) {
+      result = result.delete(type, id);
+      overlay.recordDelete(type, id);
     }
     return result;
   }

@@ -26,10 +26,11 @@ function emptyChangeSet(): ChangeSet<TTM> {
   );
 }
 
-/** Builds a ChangeSet from the given blind sets and updates. */
+/** Builds a ChangeSet from the given blind sets, updates, and deletes. */
 function changeSet(
   blindSets: Array<Counter | Register> = [],
-  updates: Array<{ value: Counter | Register; updates: object[] }> = []
+  updates: Array<{ value: Counter | Register; updates: object[] }> = [],
+  deletes: Array<{ type: keyof TTM; id: string }> = []
 ): ChangeSet<TTM> {
   const result = emptyChangeSet();
   for (const value of blindSets) {
@@ -38,7 +39,15 @@ function changeSet(
   for (const update of updates) {
     result.updates.set(update.value.type, update.value.id, update.updates);
   }
+  for (const { type, id } of deletes) {
+    result.deletes.set(type, id, true);
+  }
   return result;
+}
+
+/** Returns the deleted ids for a type, for asserting on a deletes BiMap. */
+function deletedIds(changes: ChangeSet<TTM>, type: keyof TTM): string[] {
+  return changes.deletes.getInner(type).map(([id]) => id);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -131,6 +140,45 @@ describe("mergeChangeSets", () => {
     );
   });
 
+  it("lets a later delete override an earlier blind set and update", () => {
+    const merged = mergeChangeSets(typeToModel, [
+      changeSet([counter("a", 1)]),
+      changeSet([], [{ value: counter("b", 5), updates: [{ delta: 1 }] }]),
+      changeSet(
+        [],
+        [],
+        [
+          { type: "counter", id: "a" },
+          { type: "counter", id: "b" },
+        ]
+      ),
+    ]);
+    assert.strictEqual(merged.blindSets.size, 0);
+    assert.strictEqual(merged.updates.size, 0);
+    assert.deepStrictEqual(deletedIds(merged, "counter").sort(), ["a", "b"]);
+  });
+
+  it("lets a later blind set override an earlier delete", () => {
+    const merged = mergeChangeSets(typeToModel, [
+      changeSet([], [], [{ type: "counter", id: "a" }]),
+      changeSet([counter("a", 7)]),
+    ]);
+    assert.strictEqual(merged.deletes.size, 0);
+    assert.deepStrictEqual(
+      merged.blindSets.get("counter", "a"),
+      counter("a", 7)
+    );
+  });
+
+  it("deduplicates repeated deletes of the same key", () => {
+    const merged = mergeChangeSets(typeToModel, [
+      changeSet([], [], [{ type: "counter", id: "a" }]),
+      changeSet([], [], [{ type: "counter", id: "a" }]),
+    ]);
+    assert.strictEqual(merged.deletes.size, 1);
+    assert.deepStrictEqual(deletedIds(merged, "counter"), ["a"]);
+  });
+
   it("does not mutate the input update arrays", () => {
     const first = { value: counter("a", 11), updates: [{ delta: 1 }] };
     const second = { value: counter("a", 13), updates: [{ delta: 2 }] };
@@ -163,5 +211,25 @@ describe("ChangeSet save/load", () => {
     assert.deepStrictEqual(restored.updates.get("counter", "b"), [
       { delta: 3 },
     ]);
+  });
+
+  it("round-trips deletes", () => {
+    const original = changeSet(
+      [counter("a", 5)],
+      [],
+      [
+        { type: "counter", id: "gone" },
+        { type: "register", id: "old" },
+      ]
+    );
+
+    const restored = ChangeSet.load<TTM>(typeToModel, original.save());
+
+    assert.deepStrictEqual(
+      restored.blindSets.get("counter", "a"),
+      counter("a", 5)
+    );
+    assert.deepStrictEqual(deletedIds(restored, "counter"), ["gone"]);
+    assert.deepStrictEqual(deletedIds(restored, "register"), ["old"]);
   });
 });
