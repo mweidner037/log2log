@@ -4,7 +4,7 @@ import { BaseTypeToModel } from "../model";
 /**
  * Creates a composite key from a type and id.
  */
-function makeKey(type: string, id: string): string {
+function makeKey(type: unknown, id: string): string {
   return `${type}\\${id}`;
 }
 
@@ -50,7 +50,7 @@ export class PersistentBiMap<TTM extends BaseTypeToModel, V> {
   /**
    * Gets the value at (type, id), or undefined if not present.
    */
-  get(type: keyof TTM & string, id: string): V | undefined {
+  get(type: keyof TTM, id: string): V | undefined {
     const result = this.tree.get(makeKey(type, id));
     // The library returns void for missing keys; convert to undefined.
     return result === undefined ? undefined : result;
@@ -59,14 +59,14 @@ export class PersistentBiMap<TTM extends BaseTypeToModel, V> {
   /**
    * Returns true if the map contains an entry at (type, id).
    */
-  has(type: keyof TTM & string, id: string): boolean {
+  has(type: keyof TTM, id: string): boolean {
     return this.tree.find(makeKey(type, id)).valid;
   }
 
   /**
    * Returns a new map with the value set at (type, id).
    */
-  set(type: keyof TTM & string, id: string, value: V): PersistentBiMap<TTM, V> {
+  set(type: keyof TTM, id: string, value: V): PersistentBiMap<TTM, V> {
     const key = makeKey(type, id);
     // Remove any existing entry first, then insert the new one.
     const inserted = this.tree.remove(key).insert(key, value);
@@ -77,7 +77,7 @@ export class PersistentBiMap<TTM extends BaseTypeToModel, V> {
    * Returns a new map with the entry at (type, id) removed.
    * If the entry doesn't exist, returns this map unchanged.
    */
-  delete(type: keyof TTM & string, id: string): PersistentBiMap<TTM, V> {
+  delete(type: keyof TTM, id: string): PersistentBiMap<TTM, V> {
     const key = makeKey(type, id);
     if (!this.tree.find(key).valid) {
       return this;
@@ -88,9 +88,9 @@ export class PersistentBiMap<TTM extends BaseTypeToModel, V> {
   /**
    * Returns all entries for a given type as an array of [id, value] pairs.
    */
-  getInner(type: keyof TTM & string): Array<[string, V]> {
+  getInner(type: keyof TTM): Array<[string, V]> {
     const results: Array<[string, V]> = [];
-    const prefix = type + "\\";
+    const prefix = (type as keyof TTM & string) + "\\";
     // Find the first key >= prefix, then walk while the prefix matches.
     const iter = this.tree.ge(prefix);
     while (iter.valid) {
@@ -107,8 +107,8 @@ export class PersistentBiMap<TTM extends BaseTypeToModel, V> {
   /**
    * Returns true if there are any entries for the given type.
    */
-  hasInner(type: keyof TTM & string): boolean {
-    const prefix = type + "\\";
+  hasInner(type: keyof TTM): boolean {
+    const prefix = (type as keyof TTM & string) + "\\";
     const iter = this.tree.ge(prefix);
     return iter.valid && iter.key !== undefined && iter.key.startsWith(prefix);
   }
@@ -117,8 +117,8 @@ export class PersistentBiMap<TTM extends BaseTypeToModel, V> {
    * Returns a new map with all entries for the given type removed.
    * If there are no such entries, returns this map unchanged.
    */
-  deleteInner(type: keyof TTM & string): PersistentBiMap<TTM, V> {
-    const prefix = type + "\\";
+  deleteInner(type: keyof TTM): PersistentBiMap<TTM, V> {
+    const prefix = (type as keyof TTM & string) + "\\";
     const keysToRemove: string[] = [];
 
     // Collect all keys with the given prefix.
@@ -147,9 +147,7 @@ export class PersistentBiMap<TTM extends BaseTypeToModel, V> {
    * Iterates over all entries in the map, calling the visitor for each.
    * Iteration order is lexicographic by (type, id).
    */
-  forEach(
-    visitor: (type: keyof TTM & string, id: string, value: V) => void
-  ): void {
+  forEach(visitor: (type: keyof TTM, id: string, value: V) => void): void {
     this.tree.forEach((compositeKey, value) => {
       const [type, id] = parseKey<keyof TTM & string>(compositeKey);
       visitor(type, id, value);
@@ -160,7 +158,7 @@ export class PersistentBiMap<TTM extends BaseTypeToModel, V> {
    * Returns an iterator over all entries as [type, id, value] tuples.
    * Iteration order is lexicographic by (type, id).
    */
-  *entries(): IterableIterator<[keyof TTM & string, string, V]> {
+  *entries(): IterableIterator<[keyof TTM, string, V]> {
     const iter = this.tree.begin;
     while (iter.valid) {
       const [type, id] = parseKey<keyof TTM & string>(iter.key as string);
@@ -184,8 +182,8 @@ export class PersistentBiMap<TTM extends BaseTypeToModel, V> {
   /**
    * Returns all unique type keys.
    */
-  outerKeys(): Set<keyof TTM & string> {
-    const seen = new Set<keyof TTM & string>();
+  outerKeys(): Set<keyof TTM> {
+    const seen = new Set<keyof TTM>();
     this.tree.forEach((compositeKey) => {
       const [type] = parseKey<keyof TTM & string>(compositeKey);
       seen.add(type);

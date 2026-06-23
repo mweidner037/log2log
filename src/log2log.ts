@@ -31,7 +31,7 @@ export class Log2Log<TTM extends BaseTypeToModel> {
     readonly initialState: SavedState<TTM>
   ) {
     // Load initial state.
-    for (const type of Object.keys(typeToModel) as (keyof TTM & string)[]) {
+    for (const type of Object.keys(typeToModel) as (keyof TTM)[]) {
       const model = typeToModel[type];
       const savedValues = initialState[type];
       if (savedValues === undefined) continue;

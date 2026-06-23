@@ -91,7 +91,7 @@ export class ChangeSet<TTM extends BaseTypeToModel> {
     /**
      * Gets the value at (type, id), or undefined if not present.
      */
-    get(type: keyof TTM & string, id: string): BaseValue | undefined;
+    get(type: keyof TTM, id: string): BaseValue | undefined;
   }): RenderedChangeSet<TTM> {
     const rendered = new RenderedChangeSet(this.typeToModel);
     rendered.apply(this, state);
@@ -132,7 +132,7 @@ export class ChangeSet<TTM extends BaseTypeToModel> {
 
     const blindSets = new BiMap<TTM, BaseValue>();
     const updates = new BiMap<TTM, object[]>();
-    for (const type of Object.keys(saved.values) as (keyof TTM & string)[]) {
+    for (const type of Object.keys(saved.values) as (keyof TTM)[]) {
       const model = typeToModel[type];
       const entry = saved.values[type];
       for (const savedValue of entry.blindSets) {
@@ -145,7 +145,7 @@ export class ChangeSet<TTM extends BaseTypeToModel> {
     }
 
     const deletes = new BiMap<TTM, true>();
-    for (const type of Object.keys(saved.deletes) as (keyof TTM & string)[]) {
+    for (const type of Object.keys(saved.deletes) as (keyof TTM)[]) {
       const ids = saved.deletes[type]!;
       for (const id of ids) deletes.set(type, id, true);
     }

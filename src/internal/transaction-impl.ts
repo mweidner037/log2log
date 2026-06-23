@@ -53,12 +53,12 @@ export class TransactionImpl<TTM extends BaseTypeToModel>
       /**
        * Gets the value at (type, id), or undefined if not present.
        */
-      get(type: keyof TTM & string, id: string): BaseValue | undefined;
+      get(type: keyof TTM, id: string): BaseValue | undefined;
     }
   ) {}
 
   get<K extends keyof TTM>(type: K, id: string): ValueType<TTM, K> | undefined {
-    const t = type as keyof TTM & string;
+    const t = type;
 
     // A blind set shows up for future reads.
     const blind = this.blindSets.get(t, id);
@@ -102,7 +102,7 @@ export class TransactionImpl<TTM extends BaseTypeToModel>
     id: string,
     initialValue?: ValueType<TTM, K>
   ): MutableValueType<TTM, K> | undefined {
-    const t = type as keyof TTM & string;
+    const t = type;
 
     // If we already have a mutable for this value, return the same one.
     const existing = this.mutables.get(t, id);
@@ -158,7 +158,7 @@ export class TransactionImpl<TTM extends BaseTypeToModel>
   }
 
   set<K extends keyof TTM>(value: ValueType<TTM, K>): void {
-    const t = value.type as keyof TTM & string;
+    const t = value.type;
     // Override any active mutable version: its changes will not be committed.
     this.mutables.delete(t, value.id);
     // A set overrides any earlier delete of this key.
@@ -168,7 +168,7 @@ export class TransactionImpl<TTM extends BaseTypeToModel>
   }
 
   delete<K extends keyof TTM>(type: K, id: string): void {
-    const t = type as keyof TTM & string;
+    const t = type;
     // Override any pending set or active mutable version: the net effect is a
     // delete, so their changes will not be committed.
     this.blindSets.delete(t, id);

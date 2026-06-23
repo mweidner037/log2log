@@ -35,7 +35,7 @@ export class RenderedChangeSet<TTM extends BaseTypeToModel> {
     /**
      * Gets the value at (type, id), or undefined if not present.
      */
-    get(type: keyof TTM & string, id: string): BaseValue | undefined;
+    get(type: keyof TTM, id: string): BaseValue | undefined;
   }): RenderedChangeSet<TTM> {
     const inverseSets = new BiMap<TTM, BaseValue>();
     const inverseDeletes = new BiMap<TTM, true>();
@@ -89,7 +89,7 @@ export class RenderedChangeSet<TTM extends BaseTypeToModel> {
       /**
        * Gets the value at (type, id), or undefined if not present.
        */
-      get(type: keyof TTM & string, id: string): BaseValue | undefined;
+      get(type: keyof TTM, id: string): BaseValue | undefined;
     }
   ): void {
     for (const [type, id, value] of changeSet.blindSets.entries()) {
@@ -106,7 +106,9 @@ export class RenderedChangeSet<TTM extends BaseTypeToModel> {
       }
       if (currentValue === undefined) {
         throw new Error(
-          `Attempted to apply ChangeSet update to value with type ${type} and id ${id}, but it does not exist`
+          `Attempted to apply ChangeSet update to value with type ${
+            type as keyof TTM & string
+          } and id ${id}, but it does not exist`
         );
       }
 
@@ -123,13 +125,13 @@ export class RenderedChangeSet<TTM extends BaseTypeToModel> {
   }
 
   /** Records (type, id) as a set of `value`, clearing any deletion of it. */
-  set(type: keyof TTM & string, id: string, value: BaseValue): void {
+  set(type: keyof TTM, id: string, value: BaseValue): void {
     this.sets.set(type, id, value);
     this.deletes.delete(type, id);
   }
 
   /** Records (type, id) as a deletion, clearing any set of it. */
-  delete(type: keyof TTM & string, id: string): void {
+  delete(type: keyof TTM, id: string): void {
     this.deletes.set(type, id, true);
     this.sets.delete(type, id);
   }

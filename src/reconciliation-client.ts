@@ -31,7 +31,7 @@ export class ReconciliationClient<TTM extends BaseTypeToModel> {
   ) {
     // Load initial state.
     let state = PersistentBiMap.empty<TTM, BaseValue>();
-    for (const type of Object.keys(typeToModel) as (keyof TTM & string)[]) {
+    for (const type of Object.keys(typeToModel) as (keyof TTM)[]) {
       const model = typeToModel[type];
       const savedValues = initialState[type];
       if (savedValues === undefined) continue;
@@ -49,7 +49,7 @@ export class ReconciliationClient<TTM extends BaseTypeToModel> {
    * Returns the value with the given type and id, or undefined if it does not exist.
    */
   get<K extends keyof TTM>(type: K, id: string): ValueType<TTM, K> | undefined {
-    const value = this.optimisticState.get(type as keyof TTM & string, id);
+    const value = this.optimisticState.get(type, id);
     return value as ValueType<TTM, K> | undefined;
   }
 
