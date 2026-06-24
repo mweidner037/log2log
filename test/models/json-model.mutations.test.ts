@@ -8,7 +8,7 @@ import {
   JsonPatchExtended,
   defineJsonModel,
 } from "../../src/models/json-model";
-import { SavedState } from "../../src/saved-state";
+import { SavedState } from "../../src/types/saved-state";
 
 /* -------------------------------------------------------------------------- */
 /* Sample type and model.                                                     */

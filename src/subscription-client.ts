@@ -1,7 +1,7 @@
-import { BaseTypeToModel } from "./model";
+import { BiMap } from "./data-structures/bi-map";
+import { SubscriptionDelta } from "./data-structures/subscription-delta";
 import { ReconciliationReplica } from "./reconciliation-replica";
-import { BiMap } from "./util/bi-map";
-import { SubscriptionDelta } from "./util/subscription-delta";
+import { BaseTypeToModel } from "./types/model";
 
 // TODO: on the server, wait to send sub deletes until you have a real change.
 

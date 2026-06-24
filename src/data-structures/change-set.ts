@@ -1,5 +1,5 @@
 import * as z from "zod";
-import { BaseTypeToModel, BaseValue } from "../model";
+import { BaseTypeToModel, BaseValue } from "../types/model";
 import { BiMap } from "./bi-map";
 import { RenderedChangeSet } from "./rendered-change-set";
 

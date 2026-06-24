@@ -1,9 +1,12 @@
 import { assert } from "chai";
 import { describe, it } from "mocha";
 
-import { BaseValue } from "../../src/model";
-import { BiMap } from "../../src/util/bi-map";
-import { ChangeSet, mergeChangeSets } from "../../src/util/change-set";
+import { BiMap } from "../../src/data-structures/bi-map";
+import {
+  ChangeSet,
+  mergeChangeSets,
+} from "../../src/data-structures/change-set";
+import { BaseValue } from "../../src/types/model";
 import { Counter, Register, TTM, typeToModel } from "../test-models";
 
 /* -------------------------------------------------------------------------- */

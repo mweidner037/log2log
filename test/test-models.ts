@@ -1,5 +1,5 @@
-import { BaseValue, MutableValue, defineModel } from "../src/model";
-import { SavedState } from "../src/saved-state";
+import { BaseValue, MutableValue, defineModel } from "../src/types/model";
+import { SavedState } from "../src/types/saved-state";
 
 /* -------------------------------------------------------------------------- */
 /* Made-up models for testing.                                                */

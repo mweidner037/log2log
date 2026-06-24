@@ -1,4 +1,4 @@
-import { BaseTypeToModel, BaseValue } from "../model";
+import { BaseTypeToModel, BaseValue } from "../types/model";
 import { BiMap } from "./bi-map";
 import { ChangeSet } from "./change-set";
 

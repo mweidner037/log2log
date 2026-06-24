@@ -1,5 +1,5 @@
 import * as z from "zod";
-import { BaseTypeToModel } from "../model";
+import { BaseTypeToModel } from "../types/model";
 import { BiMap } from "./bi-map";
 
 export type SavedSubscriptionDelta = {

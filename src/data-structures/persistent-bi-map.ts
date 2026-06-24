@@ -1,5 +1,5 @@
 import createRBTree from "functional-red-black-tree";
-import { BaseTypeToModel } from "../model";
+import { BaseTypeToModel } from "../types/model";
 
 /**
  * Creates a composite key from a type and id.

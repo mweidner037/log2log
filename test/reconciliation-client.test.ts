@@ -1,13 +1,13 @@
 import { assert } from "chai";
 import { describe, it } from "mocha";
 
+import { BiMap } from "../src/data-structures/bi-map";
+import { ChangeSet } from "../src/data-structures/change-set";
+import { RenderedChangeSet } from "../src/data-structures/rendered-change-set";
 import { Log2Log } from "../src/log2log";
-import { BaseValue } from "../src/model";
-import { Mutation } from "../src/mutation";
 import { ReconciliationReplica } from "../src/reconciliation-replica";
-import { BiMap } from "../src/util/bi-map";
-import { ChangeSet } from "../src/util/change-set";
-import { RenderedChangeSet } from "../src/util/rendered-change-set";
+import { BaseValue } from "../src/types/model";
+import { Mutation } from "../src/types/mutation";
 import {
   Counter,
   Register,

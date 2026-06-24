@@ -1,5 +1,5 @@
 import * as z from "zod";
-import { BaseValue, DefModel, MutableValue } from "../model";
+import { BaseValue, DefModel, MutableValue } from "../types/model";
 
 // Based on json-patch-observe by Hai Phan
 // (https://github.com/ken107/jsonpatch-observe/blob/8077cffd9d6f245f537f35c3f0a9bcc75cb01008/src/observe.ts),

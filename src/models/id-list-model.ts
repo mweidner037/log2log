@@ -1,5 +1,5 @@
 import { ElementId, IdList, SavedIdList } from "articulated";
-import { BaseValue, DefModel, MutableValue } from "../model";
+import { BaseValue, DefModel, MutableValue } from "../types/model";
 
 export interface IdListValue<K extends string = string> extends BaseValue<K> {
   readonly list: IdList;

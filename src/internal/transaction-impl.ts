@@ -1,14 +1,14 @@
+import { BiMap } from "../data-structures/bi-map";
+import { ChangeSet } from "../data-structures/change-set";
+import { RenderedChangeSet } from "../data-structures/rendered-change-set";
 import {
   BaseTypeToModel,
   BaseValue,
   MutableValue,
   MutableValueType,
   ValueType,
-} from "../model";
-import { Transaction } from "../transaction";
-import { BiMap } from "../util/bi-map";
-import { ChangeSet } from "../util/change-set";
-import { RenderedChangeSet } from "../util/rendered-change-set";
+} from "../types/model";
+import { Transaction } from "../types/transaction";
 
 /**
  * A single active mutable value within a transaction.

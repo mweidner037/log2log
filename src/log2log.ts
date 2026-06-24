@@ -1,10 +1,10 @@
+import { BiMap } from "./data-structures/bi-map";
+import { ChangeSet } from "./data-structures/change-set";
+import { RenderedChangeSet } from "./data-structures/rendered-change-set";
 import { TransactionImpl } from "./internal/transaction-impl";
-import { BaseTypeToModel, BaseValue } from "./model";
-import { Mutation } from "./mutation";
-import { SavedState } from "./saved-state";
-import { BiMap } from "./util/bi-map";
-import { ChangeSet } from "./util/change-set";
-import { RenderedChangeSet } from "./util/rendered-change-set";
+import { BaseTypeToModel, BaseValue } from "./types/model";
+import { Mutation } from "./types/mutation";
+import { SavedState } from "./types/saved-state";
 
 export type MutationResult<TTM extends BaseTypeToModel> =
   | {

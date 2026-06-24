@@ -1,11 +1,11 @@
+import { BiMap } from "./data-structures/bi-map";
+import { ChangeSet } from "./data-structures/change-set";
+import { PersistentBiMap } from "./data-structures/persistent-bi-map";
+import { RenderedChangeSet } from "./data-structures/rendered-change-set";
 import { TransactionImpl } from "./internal/transaction-impl";
-import { BaseTypeToModel, BaseValue, ValueType } from "./model";
-import { Mutation } from "./mutation";
-import { SavedState } from "./saved-state";
-import { BiMap } from "./util/bi-map";
-import { ChangeSet } from "./util/change-set";
-import { PersistentBiMap } from "./util/persistent-bi-map";
-import { RenderedChangeSet } from "./util/rendered-change-set";
+import { BaseTypeToModel, BaseValue, ValueType } from "./types/model";
+import { Mutation } from "./types/mutation";
+import { SavedState } from "./types/saved-state";
 
 /**
  * Key-value store replica for a client connected to a Log2Log server.
