@@ -377,11 +377,9 @@ describe("ReconciliationClient", () => {
       // The server processed m1 but its mutation failed there (a no-op), so m1
       // is confirmed without any server changes. "b" never existed on the
       // server, so it must be deleted from the optimistic state.
-      const changes = client.applyServerChanges(
-        emptyChangeSet(),
-        new BiMap(),
-        ["m1"]
-      );
+      const changes = client.applyServerChanges(emptyChangeSet(), new BiMap(), [
+        "m1",
+      ]);
       assert.isUndefined(client.get("counter", "b"));
       assert.strictEqual(changes.sets.size, 0);
       assert.strictEqual(changes.deletes.size, 1);
