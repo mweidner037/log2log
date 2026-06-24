@@ -1,3 +1,4 @@
+import { GetState } from "../types/get-state";
 import { BaseTypeToModel, BaseValue } from "../types/model";
 import { BiMap } from "./bi-map";
 import { ChangeSet } from "./change-set";
@@ -83,15 +84,7 @@ export class RenderedChangeSet<TTM extends BaseTypeToModel> {
    * the current state of this RenderedChangeSet, so that we can process updates
    * to values that we have not changed.
    */
-  apply(
-    changeSet: ChangeSet<TTM>,
-    state: {
-      /**
-       * Gets the value at (type, id), or undefined if not present.
-       */
-      get(type: keyof TTM, id: string): BaseValue | undefined;
-    }
-  ): void {
+  apply(changeSet: ChangeSet<TTM>, state: GetState<TTM>): void {
     for (const [type, id, value] of changeSet.blindSets.entries()) {
       this.set(type, id, value);
     }

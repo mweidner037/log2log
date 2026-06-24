@@ -1,4 +1,5 @@
 import * as z from "zod";
+import { GetState } from "../types/get-state";
 import { BaseTypeToModel, BaseValue } from "../types/model";
 import { BiMap } from "./bi-map";
 import { RenderedChangeSet } from "./rendered-change-set";
@@ -58,9 +59,16 @@ export class ChangeSet<TTM extends BaseTypeToModel> {
 
   /**
    * Applies another ChangeSet on top of this one, modifying this one in-place.
+   *
+   * @param reject If supplied, rejected keys are skipped when iterating over changeSet.
    */
-  apply(changeSet: ChangeSet<TTM>): void {
+  apply(
+    changeSet: ChangeSet<TTM>,
+    reject?: (type: keyof TTM, id: string) => boolean
+  ): void {
     for (const [type, id, value] of changeSet.blindSets.entries()) {
+      if (reject?.(type, id)) continue;
+
       // A blind set overrides any earlier change to this key.
       this.updates.delete(type, id);
       this.deletes.delete(type, id);
@@ -69,6 +77,8 @@ export class ChangeSet<TTM extends BaseTypeToModel> {
     }
 
     for (const [type, id, valueUpdates] of changeSet.updates.entries()) {
+      if (reject?.(type, id)) continue;
+
       // An update overrides an earlier delete of this key.
       this.deletes.delete(type, id);
 
@@ -92,6 +102,8 @@ export class ChangeSet<TTM extends BaseTypeToModel> {
     }
 
     for (const [type, id] of changeSet.deletes.entries()) {
+      if (reject?.(type, id)) continue;
+
       // A delete overrides any earlier change to this key.
       this.blindSets.delete(type, id);
       this.updates.delete(type, id);
@@ -103,12 +115,7 @@ export class ChangeSet<TTM extends BaseTypeToModel> {
   /**
    * Renders this ChangeSet on top of the given state.
    */
-  render(state: {
-    /**
-     * Gets the value at (type, id), or undefined if not present.
-     */
-    get(type: keyof TTM, id: string): BaseValue | undefined;
-  }): RenderedChangeSet<TTM> {
+  render(state: GetState<TTM>): RenderedChangeSet<TTM> {
     const rendered = new RenderedChangeSet(this.typeToModel);
     rendered.apply(this, state);
     return rendered;

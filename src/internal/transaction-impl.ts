@@ -1,6 +1,7 @@
 import { BiMap } from "../data-structures/bi-map";
 import { ChangeSet } from "../data-structures/change-set";
 import { RenderedChangeSet } from "../data-structures/rendered-change-set";
+import { GetState } from "../types/get-state";
 import {
   BaseTypeToModel,
   BaseValue,
@@ -49,12 +50,7 @@ export class TransactionImpl<TTM extends BaseTypeToModel>
 
   constructor(
     private readonly typeToModel: TTM,
-    private readonly state: {
-      /**
-       * Gets the value at (type, id), or undefined if not present.
-       */
-      get(type: keyof TTM, id: string): BaseValue | undefined;
-    }
+    private readonly state: GetState<TTM>
   ) {}
 
   get<K extends keyof TTM>(type: K, id: string): ValueType<TTM, K> | undefined {
