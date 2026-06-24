@@ -12,7 +12,7 @@ import { RenderedChangeSet } from "./util/rendered-change-set";
  * In addition to accepting changes from the server, this class supports optimistic client operations
  * using [server reconciliation](https://mattweidner.com/2024/06/04/server-architectures.html#1-server-reconciliation).
  */
-export class ReconciliationClient<TTM extends BaseTypeToModel> {
+export class ReconciliationReplica<TTM extends BaseTypeToModel> {
   /** The latest authoritative state received from the server. */
   private serverState: PersistentBiMap<TTM, BaseValue>;
   /** The server state with all pending local mutations applied on top. */
@@ -23,7 +23,7 @@ export class ReconciliationClient<TTM extends BaseTypeToModel> {
   /**
    * The current diff serverState -> optimisticState.
    */
-  private optimisticDiff: RenderedChangeSet<TTM>;
+  optimisticDiff: RenderedChangeSet<TTM>;
 
   constructor(
     readonly typeToModel: TTM,

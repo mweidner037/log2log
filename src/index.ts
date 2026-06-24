@@ -3,7 +3,7 @@ export * from "./model";
 export * from "./models/id-list-model";
 export * from "./models/json-model";
 export * from "./mutation";
-export * from "./reconciliation-client";
+export * from "./reconciliation-replica";
 export * from "./saved-state";
 export * from "./transaction";
 export * from "./util/bi-map";

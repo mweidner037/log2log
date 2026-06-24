@@ -4,7 +4,7 @@ import { describe, it } from "mocha";
 import { Log2Log } from "../src/log2log";
 import { BaseValue } from "../src/model";
 import { Mutation } from "../src/mutation";
-import { ReconciliationClient } from "../src/reconciliation-client";
+import { ReconciliationReplica } from "../src/reconciliation-replica";
 import { BiMap } from "../src/util/bi-map";
 import { ChangeSet } from "../src/util/change-set";
 import { RenderedChangeSet } from "../src/util/rendered-change-set";
@@ -20,8 +20,8 @@ import {
 /* Helpers.                                                                    */
 /* -------------------------------------------------------------------------- */
 
-function newClient(): ReconciliationClient<TTM> {
-  return new ReconciliationClient(typeToModel, newInitialState());
+function newClient(): ReconciliationReplica<TTM> {
+  return new ReconciliationReplica(typeToModel, newInitialState());
 }
 
 /** A standalone server, used to produce realistic ChangeSets for the client. */
