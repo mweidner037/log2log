@@ -3,9 +3,7 @@ import { ReconciliationReplica } from "./reconciliation-replica";
 import { BiMap } from "./util/bi-map";
 import { SubscriptionDelta } from "./util/subscription-delta";
 
-// TODO: Reactivity for isKnown changes from either cause
-// TODO: Rerun local mutations when we receive subscription updates.
-// But on the server, wait to send sub deletes until you have a real change.
+// TODO: on the server, wait to send sub deletes until you have a real change.
 
 export class SubscriptionClient<TTM extends BaseTypeToModel> {
   private readonly activeSubscriptions = new BiMap<TTM, true>();

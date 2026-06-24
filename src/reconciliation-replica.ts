@@ -2,6 +2,7 @@ import { TransactionImpl } from "./internal/transaction-impl";
 import { BaseTypeToModel, BaseValue, ValueType } from "./model";
 import { Mutation } from "./mutation";
 import { SavedState } from "./saved-state";
+import { BiMap } from "./util/bi-map";
 import { ChangeSet } from "./util/change-set";
 import { PersistentBiMap } from "./util/persistent-bi-map";
 import { RenderedChangeSet } from "./util/rendered-change-set";
@@ -108,12 +109,17 @@ export class ReconciliationReplica<TTM extends BaseTypeToModel> {
    * they are rerun on top of the new server state.
    * Any rerun mutations that throw become no-ops.
    *
-   * @returns The overall rendered changes to the current *optimistic* state.
+   * @param unsubscriptions Indicate any values that were unsubscribed
+   * along with this ChangeSet, so that we can delete them from our
+   * copy of the server state.
+   * @returns The overall rendered changes to the current *optimistic* state,
+   * including unsubscriptions.
    * These may be broader than necessary (e.g., if rerunning a
    * pending local mutation causes the same changes as its previous run).
    */
   applyServerChanges(
     changeSet: ChangeSet<TTM>,
+    unsubscriptions: BiMap<TTM, true>,
     confirmedMutationIds: string[]
   ): RenderedChangeSet<TTM> {
     // Confirmed mutations are now incorporated into the server state, so they
@@ -131,6 +137,12 @@ export class ReconciliationReplica<TTM extends BaseTypeToModel> {
     const serverRendered = changeSet.render(this.serverState);
     this.serverState = changeState(this.serverState, serverRendered);
     overallChanges.applyRendered(serverRendered);
+
+    // Apply the unsubscriptions to this.serverState.
+    for (const [type, id] of unsubscriptions.entries()) {
+      this.serverState = this.serverState.delete(type, id);
+      overallChanges.delete(type, id);
+    }
 
     // Rerun the remaining pending mutations on top of the new server state to
     // rebuild the optimistic state. A rerun that throws is skipped (a no-op),
