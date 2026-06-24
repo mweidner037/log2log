@@ -5,6 +5,8 @@ export * from "./models/json-model";
 export * from "./mutation";
 export * from "./reconciliation-replica";
 export * from "./saved-state";
+export * from "./subscription-client";
+export * from "./subscription-server";
 export * from "./transaction";
 export * from "./util/bi-map";
 export * from "./util/change-set";
