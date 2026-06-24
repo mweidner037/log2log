@@ -3,7 +3,7 @@
     "target": "es2022",
     "strict": true,
     "esModuleInterop": true,
-    "declaration": true,
-    "sourceMap": true
+    "module": "es2022",
+    "moduleResolution": "bundler"
   }
 }

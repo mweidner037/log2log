@@ -1,7 +1,5 @@
+/* tsconfig for VSCode and eslint that includes everything. */
 {
-  "files": [],
-  "references": [
-    { "path": "./tsconfig.esm.json" },
-    { "path": "./tsconfig.test.json" }
-  ]
+  "extends": "./tsconfig.base.json",
+  "include": ["src", "test"]
 }

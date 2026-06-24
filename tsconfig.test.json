@@ -1,11 +1,9 @@
 {
   "extends": "./tsconfig.base.json",
   "compilerOptions": {
-    "composite": true,
+    "noEmit": true,
     "module": "node16",
-    "moduleResolution": "node16",
-    "rootDir": ".",
-    "outDir": "build/test"
+    "moduleResolution": "node16"
   },
   "include": ["src", "test"]
 }
