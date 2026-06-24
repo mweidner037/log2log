@@ -92,7 +92,7 @@ export type TTM = typeof typeToModel;
  * Returns a fresh initial state with one counter ("a" = 10) and one register
  * ("r" = "initial").
  */
-export function newInitialState(): SavedState<TTM> {
+export function newInitialState(): SavedState {
   return {
     counter: [{ type: "counter", id: "a", count: 10 }],
     register: [{ type: "register", id: "r", value: "initial" }],

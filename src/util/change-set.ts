@@ -1,3 +1,4 @@
+import * as z from "zod";
 import { BaseTypeToModel, BaseValue } from "../model";
 import { BiMap } from "./bi-map";
 import { RenderedChangeSet } from "./rendered-change-set";
@@ -5,19 +6,34 @@ import { RenderedChangeSet } from "./rendered-change-set";
 /**
  * JSON-serializable form of a {@link ChangeSet}.
  */
-export type SavedChangeSet<TTM extends BaseTypeToModel> = {
+export type SavedChangeSet = {
   /** Per-type blind sets and updates. */
-  values: {
-    [K in keyof TTM]: {
+  values: Record<
+    string,
+    {
       /** Blind-set values serialized to JSON. */
       blindSets: object[];
       /** Updates keyed by their value's id. */
       updates: { [id: string]: object[] };
-    };
-  };
+    }
+  >;
   /** Deletes, mapping type to an array of ids. */
-  deletes: { [K in keyof TTM]?: string[] };
+  deletes: Record<string, string[]>;
 };
+
+/**
+ * Zod schema for SavedChangeSet.
+ */
+export const zChangeSet: z.ZodType<SavedChangeSet> = z.object({
+  values: z.record(
+    z.string(),
+    z.object({
+      blindSets: z.array(z.any()),
+      updates: z.record(z.string(), z.array(z.any())),
+    })
+  ),
+  deletes: z.record(z.string(), z.array(z.any())),
+});
 
 /**
  * An atomic set of changes to the key-value store, suitable
@@ -98,8 +114,8 @@ export class ChangeSet<TTM extends BaseTypeToModel> {
     return rendered;
   }
 
-  save(): SavedChangeSet<TTM> {
-    const values = {} as SavedChangeSet<TTM>["values"];
+  save(): SavedChangeSet {
+    const values = {} as SavedChangeSet["values"];
     for (const type of Object.keys(this.typeToModel) as (keyof TTM &
       string)[]) {
       const model = this.typeToModel[type];
@@ -114,7 +130,7 @@ export class ChangeSet<TTM extends BaseTypeToModel> {
       values[type] = { blindSets, updates };
     }
 
-    const deletes: { [K in keyof TTM]?: string[] } = {};
+    const deletes: Record<string, string[]> = {};
     for (const [type, id] of this.deletes.entries()) {
       const ids = deletes[type];
       if (ids === undefined) deletes[type] = [id];
@@ -128,11 +144,11 @@ export class ChangeSet<TTM extends BaseTypeToModel> {
     typeToModel: TTM,
     json: object
   ): ChangeSet<TTM> {
-    const saved = json as SavedChangeSet<TTM>;
+    const saved = json as SavedChangeSet;
 
     const blindSets = new BiMap<TTM, BaseValue>();
     const updates = new BiMap<TTM, object[]>();
-    for (const type of Object.keys(saved.values) as (keyof TTM)[]) {
+    for (const type of Object.keys(saved.values)) {
       const model = typeToModel[type];
       const entry = saved.values[type];
       for (const savedValue of entry.blindSets) {
@@ -145,8 +161,8 @@ export class ChangeSet<TTM extends BaseTypeToModel> {
     }
 
     const deletes = new BiMap<TTM, true>();
-    for (const type of Object.keys(saved.deletes) as (keyof TTM)[]) {
-      const ids = saved.deletes[type]!;
+    for (const type of Object.keys(saved.deletes)) {
+      const ids = saved.deletes[type];
       for (const id of ids) deletes.set(type, id, true);
     }
 

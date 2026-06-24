@@ -45,9 +45,8 @@ function newDoc(): Doc {
 }
 
 const typeToModel = { doc: docModel };
-type TTM = typeof typeToModel;
 
-function newState(): SavedState<TTM> {
+function newState(): SavedState {
   return { doc: [newDoc()] };
 }
 

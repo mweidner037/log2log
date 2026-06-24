@@ -25,13 +25,10 @@ export class ReconciliationReplica<TTM extends BaseTypeToModel> {
    */
   optimisticDiff: RenderedChangeSet<TTM>;
 
-  constructor(
-    readonly typeToModel: TTM,
-    readonly initialState: SavedState<TTM>
-  ) {
+  constructor(readonly typeToModel: TTM, readonly initialState: SavedState) {
     // Load initial state.
     let state = PersistentBiMap.empty<TTM, BaseValue>();
-    for (const type of Object.keys(typeToModel) as (keyof TTM)[]) {
+    for (const type of Object.keys(typeToModel)) {
       const model = typeToModel[type];
       const savedValues = initialState[type];
       if (savedValues === undefined) continue;

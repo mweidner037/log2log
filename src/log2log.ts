@@ -26,12 +26,9 @@ export type MutationResult<TTM extends BaseTypeToModel> =
 export class Log2Log<TTM extends BaseTypeToModel> {
   private readonly state = new BiMap<TTM, BaseValue>();
 
-  constructor(
-    readonly typeToModel: TTM,
-    readonly initialState: SavedState<TTM>
-  ) {
+  constructor(readonly typeToModel: TTM, readonly initialState: SavedState) {
     // Load initial state.
-    for (const type of Object.keys(typeToModel) as (keyof TTM)[]) {
+    for (const type of Object.keys(typeToModel)) {
       const model = typeToModel[type];
       const savedValues = initialState[type];
       if (savedValues === undefined) continue;
@@ -83,15 +80,14 @@ export class Log2Log<TTM extends BaseTypeToModel> {
    * Returns the current state as a {@link SavedState}, with one array of values
    * per type (empty for types that have no values).
    */
-  save(): SavedState<TTM> {
-    const result = {} as SavedState<TTM>;
+  save(): SavedState {
+    const result = {} as SavedState;
     for (const type of Object.keys(this.typeToModel) as (keyof TTM &
       string)[]) {
       const model = this.typeToModel[type];
       result[type] = this.state
         .getInner(type)
-        .map(([, value]) => model.save(value)) as SavedState<TTM>[keyof TTM &
-        string];
+        .map(([, value]) => model.save(value));
     }
     return result;
   }

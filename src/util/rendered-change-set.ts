@@ -106,9 +106,7 @@ export class RenderedChangeSet<TTM extends BaseTypeToModel> {
       }
       if (currentValue === undefined) {
         throw new Error(
-          `Attempted to apply ChangeSet update to value with type ${
-            type as keyof TTM & string
-          } and id ${id}, but it does not exist`
+          `Attempted to apply ChangeSet update to value with type ${type} and id ${id}, but it does not exist`
         );
       }
 
