@@ -150,10 +150,8 @@ export class ChangeSet<TTM extends BaseTypeToModel> {
 
   static load<TTM extends BaseTypeToModel>(
     typeToModel: TTM,
-    json: object
+    saved: SavedChangeSet
   ): ChangeSet<TTM> {
-    const saved = json as SavedChangeSet;
-
     const blindSets = new BiMap<TTM, BaseValue>();
     const updates = new BiMap<TTM, object[]>();
     for (const type of Object.keys(saved.values)) {

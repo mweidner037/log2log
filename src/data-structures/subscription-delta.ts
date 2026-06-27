@@ -64,16 +64,14 @@ export class SubscriptionDelta<TTM extends BaseTypeToModel> {
   }
 
   static load<TTM extends BaseTypeToModel>(
-    json: object
+    saved: SavedSubscriptionDelta
   ): SubscriptionDelta<TTM> {
-    const saved = json as SavedSubscriptionDelta;
-
-    const adds = new BiSet();
+    const adds = new BiSet<TTM>();
     for (const type of Object.keys(saved.adds)) {
       for (const id of saved.adds[type]) adds.add(type, id);
     }
 
-    const deletes = new BiSet();
+    const deletes = new BiSet<TTM>();
     for (const type of Object.keys(saved.deletes)) {
       for (const id of saved.deletes[type]) deletes.add(type, id);
     }
