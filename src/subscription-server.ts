@@ -29,7 +29,7 @@ export class SubscriptionServer<TTM extends BaseTypeToModel> {
   ): ChangeSet<TTM> {
     // Process deleted subscriptions first, so that we skip them in the changeSets.
     if (delta) {
-      for (const [type, id] of delta.deletes.values()) {
+      for (const [type, id] of delta.deletes) {
         this.subscriptions.delete(type, id);
       }
     }
@@ -46,7 +46,7 @@ export class SubscriptionServer<TTM extends BaseTypeToModel> {
     // Process added subscriptions, also recording their final values as blindSets
     // in the ChangeSet.
     if (delta) {
-      for (const [type, id] of delta.adds.values()) {
+      for (const [type, id] of delta.adds) {
         this.subscriptions.add(type, id);
         const value = state.get(type, id);
         if (value) overallChanges.blindSets.set(type, id, value);

@@ -154,6 +154,10 @@ export class PersistentBiMap<TTM extends BaseTypeToModel, V> {
     }
   }
 
+  [Symbol.iterator]() {
+    return this.entries();
+  }
+
   /**
    * Returns an iterator over all values in the map.
    * Iteration order is lexicographic by (type, id).

@@ -185,12 +185,12 @@ export class TransactionImpl<TTM extends BaseTypeToModel>
     const updates = new BiMap<TTM, object[]>();
     const allSets = new BiMap<TTM, BaseValue>();
 
-    for (const [type, id, value] of this.blindSets.entries()) {
+    for (const [type, id, value] of this.blindSets) {
       blindSets.set(type, id, value);
       allSets.set(type, id, value);
     }
 
-    for (const [type, id, entry] of this.mutables.entries()) {
+    for (const [type, id, entry] of this.mutables) {
       if (entry.fromState) {
         // An existing value was mutated: commit the changes as updates, and
         // record its final value (straight from __finish) in allSets.

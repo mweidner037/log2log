@@ -97,10 +97,10 @@ function changeState<TTM extends BaseTypeToModel>(
   state: BiMap<TTM, BaseValue>,
   rendered: RenderedChangeSet<TTM>
 ): void {
-  for (const [type, id, value] of rendered.sets.entries()) {
+  for (const [type, id, value] of rendered.sets) {
     state.set(type, id, value);
   }
-  for (const [type, id] of rendered.deletes.values()) {
+  for (const [type, id] of rendered.deletes) {
     state.delete(type, id);
   }
 }

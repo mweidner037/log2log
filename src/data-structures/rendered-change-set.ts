@@ -42,7 +42,7 @@ export class RenderedChangeSet<TTM extends BaseTypeToModel> {
     const inverseSets = new BiMap<TTM, BaseValue>();
     const inverseDeletes = new BiSet();
 
-    for (const [type, id] of this.sets.entries()) {
+    for (const [type, id] of this.sets) {
       const beforeValue = beforeState.get(type, id);
       if (beforeValue === undefined) {
         // The value did not exist before, so the inverse deletes it.
@@ -52,7 +52,7 @@ export class RenderedChangeSet<TTM extends BaseTypeToModel> {
       }
     }
 
-    for (const [type, id] of this.deletes.values()) {
+    for (const [type, id] of this.deletes) {
       const beforeValue = beforeState.get(type, id);
       if (beforeValue !== undefined) {
         // The value existed before, so the inverse restores it.
@@ -69,11 +69,11 @@ export class RenderedChangeSet<TTM extends BaseTypeToModel> {
    * Applies a RenderedChangeSet on top of this, modifying this in-place.
    */
   applyRendered(rendered: RenderedChangeSet<TTM>): void {
-    for (const [type, id, value] of rendered.sets.entries()) {
+    for (const [type, id, value] of rendered.sets) {
       this.set(type, id, value);
     }
 
-    for (const [type, id] of rendered.deletes.values()) {
+    for (const [type, id] of rendered.deletes) {
       this.delete(type, id);
     }
   }
@@ -86,11 +86,11 @@ export class RenderedChangeSet<TTM extends BaseTypeToModel> {
    * to values that we have not changed.
    */
   apply(changeSet: ChangeSet<TTM>, state: GetState<TTM>): void {
-    for (const [type, id, value] of changeSet.blindSets.entries()) {
+    for (const [type, id, value] of changeSet.blindSets) {
       this.set(type, id, value);
     }
 
-    for (const [type, id, valueUpdates] of changeSet.updates.entries()) {
+    for (const [type, id, valueUpdates] of changeSet.updates) {
       // The ChangeSet records only the update objects, so recover the final
       // value by applying them to this set's current value for the key.
       let currentValue = this.sets.get(type, id);
@@ -111,7 +111,7 @@ export class RenderedChangeSet<TTM extends BaseTypeToModel> {
       );
     }
 
-    for (const [type, id] of changeSet.deletes.values()) {
+    for (const [type, id] of changeSet.deletes) {
       this.delete(type, id);
     }
   }

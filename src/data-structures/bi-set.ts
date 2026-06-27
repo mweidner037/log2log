@@ -66,4 +66,8 @@ export class BiSet<TTM extends BaseTypeToModel> {
       yield [type, id];
     }
   }
+
+  [Symbol.iterator]() {
+    return this.values();
+  }
 }

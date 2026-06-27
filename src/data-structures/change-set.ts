@@ -67,7 +67,7 @@ export class ChangeSet<TTM extends BaseTypeToModel> {
     changeSet: ChangeSet<TTM>,
     reject?: (type: keyof TTM, id: string) => boolean
   ): void {
-    for (const [type, id, value] of changeSet.blindSets.entries()) {
+    for (const [type, id, value] of changeSet.blindSets) {
       if (reject?.(type, id)) continue;
 
       // A blind set overrides any earlier change to this key.
@@ -77,7 +77,7 @@ export class ChangeSet<TTM extends BaseTypeToModel> {
       this.blindSets.set(type, id, value);
     }
 
-    for (const [type, id, valueUpdates] of changeSet.updates.entries()) {
+    for (const [type, id, valueUpdates] of changeSet.updates) {
       if (reject?.(type, id)) continue;
 
       // An update overrides an earlier delete of this key.
@@ -102,7 +102,7 @@ export class ChangeSet<TTM extends BaseTypeToModel> {
       }
     }
 
-    for (const [type, id] of changeSet.deletes.values()) {
+    for (const [type, id] of changeSet.deletes) {
       if (reject?.(type, id)) continue;
 
       // A delete overrides any earlier change to this key.
@@ -139,7 +139,7 @@ export class ChangeSet<TTM extends BaseTypeToModel> {
     }
 
     const deletes: Record<string, string[]> = {};
-    for (const [type, id] of this.deletes.values()) {
+    for (const [type, id] of this.deletes) {
       const ids = deletes[type];
       if (ids === undefined) deletes[type] = [id];
       else ids.push(id);

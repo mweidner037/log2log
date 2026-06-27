@@ -27,10 +27,10 @@ export class SubscriptionDelta<TTM extends BaseTypeToModel> {
    * Applies another SubscriptionDelta on top of this one, modifying this one in-place.
    */
   apply(delta: SubscriptionDelta<TTM>): void {
-    for (const [type, id] of delta.adds.values()) {
+    for (const [type, id] of delta.adds) {
       this.add(type, id);
     }
-    for (const [type, id] of delta.deletes.values()) {
+    for (const [type, id] of delta.deletes) {
       this.delete(type, id);
     }
   }
@@ -47,14 +47,14 @@ export class SubscriptionDelta<TTM extends BaseTypeToModel> {
 
   save(): SavedSubscriptionDelta {
     const adds: Record<string, string[]> = {};
-    for (const [type, id] of this.adds.values()) {
+    for (const [type, id] of this.adds) {
       const ids = adds[type];
       if (ids === undefined) adds[type] = [id];
       else ids.push(id);
     }
 
     const deletes: Record<string, string[]> = {};
-    for (const [type, id] of this.deletes.values()) {
+    for (const [type, id] of this.deletes) {
       const ids = deletes[type];
       if (ids === undefined) deletes[type] = [id];
       else ids.push(id);
