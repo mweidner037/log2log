@@ -34,12 +34,26 @@ export class SubscriptionClient<TTM extends BaseTypeToModel> {
   ) {}
 
   /**
-   * Returns whether a value is known to the client (as defined in our class docs).
+   * Returns whether we have an active subscription for a value.
+   */
+  isActive<K extends keyof TTM>(type: K, id: string): boolean {
+    return this.activeSubscriptions.has(type, id);
+  }
+
+  /**
+   * Returns whether we have a requested subscription for a value.
+   */
+  isRequested<K extends keyof TTM>(type: K, id: string): boolean {
+    return this.requestedSubscriptions.has(type, id);
+  }
+
+  /**
+   * Returns whether a value is known to the client, as defined in our class docs.
    */
   isKnown<K extends keyof TTM>(type: K, id: string): boolean {
     // A value is known if its subscription is active or it has been edited optimistically
     // (including optimistic deletes, even when applied to non-subscribed values).
-    if (this.activeSubscriptions.has(type, id)) return true;
+    if (this.isActive(type, id)) return true;
     if (this.replica.optimisticDiff.sets.has(type, id)) return true;
     if (this.replica.optimisticDiff.deletes.has(type, id)) return true;
     return false;
@@ -73,5 +87,14 @@ export class SubscriptionClient<TTM extends BaseTypeToModel> {
     const ans = this.pendingDelta;
     this.pendingDelta = new SubscriptionDelta();
     return ans;
+  }
+
+  /**
+   * Returns the (add-only) SubscriptionDelta corresponding to all of our requested subscriptions.
+   *
+   * Use this when re-connecting to a SubscriptionServer.
+   */
+  getRequests(): SubscriptionDelta<TTM> {
+    return new SubscriptionDelta(this.requestedSubscriptions.clone());
   }
 }

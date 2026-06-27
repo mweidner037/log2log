@@ -70,4 +70,13 @@ export class BiSet<TTM extends BaseTypeToModel> {
   [Symbol.iterator]() {
     return this.values();
   }
+
+  /**
+   * Returns a clone of this BiSet.
+   */
+  clone(): BiSet<TTM> {
+    const ans = new BiSet();
+    for (const key of this.state) ans.state.add(key);
+    return ans;
+  }
 }
