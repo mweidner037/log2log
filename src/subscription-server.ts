@@ -11,7 +11,8 @@ import { BaseTypeToModel } from "./types/model";
  * You pass ChangeSets from the Log2Log through this.processChanges,
  * which returns a filtered ChangeSet holding only the changes relevant to that client,
  * according to its active subscriptions.
- * See the class docs for ReconciliationReplica.
+ *
+ * See the Subscriptions section in ReconciliationReplica's class docs for usage instructions.
  */
 export class SubscriptionServer<TTM extends BaseTypeToModel> {
   private readonly subscriptions = new BiSet<TTM>();

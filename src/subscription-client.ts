@@ -16,6 +16,8 @@ import { BaseTypeToModel } from "./types/model";
  * and get a response from the SubscriptionServer that acks the request.
  * Until a subscription is active, its value does not receive updates from the
  * SubscriptionServer, and its server value is not present in the ReconciliationReplica.
+ *
+ * See the Subscriptions section in ReconciliationReplica's class docs for usage instructions.
  */
 export class SubscriptionClient<TTM extends BaseTypeToModel> {
   private readonly activeSubscriptions = new BiSet<TTM>();

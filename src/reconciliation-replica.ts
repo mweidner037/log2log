@@ -13,6 +13,8 @@ import { SavedState } from "./types/saved-state";
  * In addition to accepting changes from the server, this class supports optimistic client operations
  * using [server reconciliation](https://mattweidner.com/2024/06/04/server-architectures.html#1-server-reconciliation).
  *
+ * ## Subscriptions
+ *
  * Optionally, the replica may sync only a set of **subscribed** values
  * (partial replication). Its state is then the server's state filtered to include
  * only actively-subscribed values, with optimistic mutations on top as usual.

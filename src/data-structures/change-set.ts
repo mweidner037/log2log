@@ -39,7 +39,7 @@ export const zChangeSet: z.ZodType<SavedChangeSet> = z.object({
 
 /**
  * An atomic set of changes to the key-value store, suitable
- * for serialization to send from Log2Log to a ReconciliationClient.
+ * for serialization to send from Log2Log to a ReconciliationReplica.
  */
 export class ChangeSet<TTM extends BaseTypeToModel> {
   constructor(

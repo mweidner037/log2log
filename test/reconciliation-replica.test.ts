@@ -76,7 +76,7 @@ function mut(
 /* Tests.                                                                      */
 /* -------------------------------------------------------------------------- */
 
-describe("ReconciliationClient", () => {
+describe("ReconciliationReplica", () => {
   describe("reads", () => {
     it("get reflects the initial state, returning undefined for missing ids", () => {
       const client = newClient();

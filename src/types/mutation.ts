@@ -10,7 +10,7 @@ export interface Mutation<TTM extends BaseTypeToModel> {
    *
    * The callback may throw to fail the mutation, turning it into a no-op.
    *
-   * Note that the callback may be called multiple times on a ReconciliationClient.
+   * Note that the callback may be called multiple times on a ReconciliationReplica.
    */
   apply: (transaction: Transaction<TTM>) => void;
 }
