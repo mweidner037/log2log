@@ -31,7 +31,7 @@ export class SubscriptionDelta<TTM extends BaseTypeToModel> {
       this.add(type, id);
     }
     for (const [type, id] of delta.deletes.entries()) {
-      this.add(type, id);
+      this.delete(type, id);
     }
   }
 
