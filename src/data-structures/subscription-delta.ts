@@ -20,6 +20,10 @@ export const zSubscriptionDelta: z.ZodType<SavedSubscriptionDelta> = z.object({
   deletes: z.record(z.string(), z.array(z.string())),
 });
 
+/**
+ * A delta (incremental change) in a client's subscriptions:
+ * disjoint sets of added and deleted subscriptions.
+ */
 export class SubscriptionDelta<TTM extends BaseTypeToModel> {
   constructor(
     readonly adds = new BiSet<TTM>(),

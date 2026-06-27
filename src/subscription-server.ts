@@ -4,6 +4,15 @@ import { SubscriptionDelta } from "./data-structures/subscription-delta";
 import { GetState } from "./types/get-state";
 import { BaseTypeToModel } from "./types/model";
 
+/**
+ * Server that handles requests from a SubscriptionClient and sends it filtered ChangeSets.
+ *
+ * Use this to partially replicate a Log2Log's changes to a client ReconciliationReplica.
+ * You pass ChangeSets from the Log2Log through this.processChanges,
+ * which returns a filtered ChangeSet holding only the changes relevant to that client,
+ * according to its active subscriptions.
+ * See the class docs for ReconciliationReplica.
+ */
 export class SubscriptionServer<TTM extends BaseTypeToModel> {
   private readonly subscriptions = new BiSet<TTM>();
 
@@ -24,12 +33,12 @@ export class SubscriptionServer<TTM extends BaseTypeToModel> {
    */
   processChanges(
     changeSets: ChangeSet<TTM>[],
-    delta: SubscriptionDelta<TTM> | null,
+    subscriptionDelta: SubscriptionDelta<TTM> | null,
     state: GetState<TTM>
   ): ChangeSet<TTM> {
     // Process deleted subscriptions first, so that we skip them in the changeSets.
-    if (delta) {
-      for (const [type, id] of delta.deletes) {
+    if (subscriptionDelta) {
+      for (const [type, id] of subscriptionDelta.deletes) {
         this.subscriptions.delete(type, id);
       }
     }
@@ -45,8 +54,8 @@ export class SubscriptionServer<TTM extends BaseTypeToModel> {
 
     // Process added subscriptions, also recording their final values as blindSets
     // in the ChangeSet.
-    if (delta) {
-      for (const [type, id] of delta.adds) {
+    if (subscriptionDelta) {
+      for (const [type, id] of subscriptionDelta.adds) {
         this.subscriptions.add(type, id);
         const value = state.get(type, id);
         if (value) overallChanges.blindSets.set(type, id, value);

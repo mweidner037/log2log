@@ -12,6 +12,18 @@ import { SavedState } from "./types/saved-state";
  *
  * In addition to accepting changes from the server, this class supports optimistic client operations
  * using [server reconciliation](https://mattweidner.com/2024/06/04/server-architectures.html#1-server-reconciliation).
+ *
+ * Optionally, the replica may sync only a set of **subscribed** values
+ * (partial replication). Its state is then the server's state filtered to include
+ * only actively-subscribed values, with optimistic mutations on top as usual.
+ * To enable subscriptions:
+ * 1. Create a SubscriptionClient alongside this replica
+ * connected to a SubscriptionServer.
+ * 2. Receive ChangeSets from the SubscriptionServer instead of directly from the server's Log2Log instance.
+ * 3. Pass those ChangeSets, together with new active unsubscriptions,
+ * to this.applyServerChanges.
+ * (Passing unsubscriptions ensures that we delete no-longer-subscribed
+ * values from our replica of the server's state, preventing deceptive out-of-date values.)
  */
 export class ReconciliationReplica<TTM extends BaseTypeToModel> {
   /** The latest authoritative state received from the server. */
@@ -23,6 +35,9 @@ export class ReconciliationReplica<TTM extends BaseTypeToModel> {
 
   /**
    * The current diff serverState -> optimisticState.
+   *
+   * Includes optimistic deletes even if redundant, so that such values are
+   * considered "known" by SubscriptionClient.
    */
   optimisticDiff: RenderedChangeSet<TTM>;
 
@@ -119,8 +134,8 @@ export class ReconciliationReplica<TTM extends BaseTypeToModel> {
    */
   applyServerChanges(
     changeSet: ChangeSet<TTM>,
-    unsubscriptions: BiSet<TTM>,
-    confirmedMutationIds: string[]
+    confirmedMutationIds: string[],
+    unsubscriptions?: BiSet<TTM>
   ): RenderedChangeSet<TTM> {
     // Confirmed mutations are now incorporated into the server state, so they
     // should no longer be rerun.
@@ -139,9 +154,11 @@ export class ReconciliationReplica<TTM extends BaseTypeToModel> {
     overallChanges.applyRendered(serverRendered);
 
     // Apply the unsubscriptions to this.serverState.
-    for (const [type, id] of unsubscriptions) {
-      this.serverState = this.serverState.delete(type, id);
-      overallChanges.delete(type, id);
+    if (unsubscriptions) {
+      for (const [type, id] of unsubscriptions) {
+        this.serverState = this.serverState.delete(type, id);
+        overallChanges.delete(type, id);
+      }
     }
 
     // Rerun the remaining pending mutations on top of the new server state to
