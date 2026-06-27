@@ -1,10 +1,10 @@
 import { assert } from "chai";
 import { describe, it } from "mocha";
 
+import { ChangeSet } from "../src/data-structures/change-set";
 import { Log2Log, MutationResult } from "../src/log2log";
-import { BaseValue } from "../src/model";
-import { Mutation } from "../src/mutation";
-import { ChangeSet } from "../src/util/change-set";
+import { BaseValue } from "../src/types/model";
+import { Mutation } from "../src/types/mutation";
 import {
   Counter,
   Register,

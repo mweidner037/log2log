@@ -1,10 +1,11 @@
+import { BiSet } from "./data-structures/bi-set";
+import { ChangeSet } from "./data-structures/change-set";
+import { PersistentBiMap } from "./data-structures/persistent-bi-map";
+import { RenderedChangeSet } from "./data-structures/rendered-change-set";
 import { TransactionImpl } from "./internal/transaction-impl";
-import { BaseTypeToModel, BaseValue, ValueType } from "./model";
-import { Mutation } from "./mutation";
-import { SavedState } from "./saved-state";
-import { ChangeSet } from "./util/change-set";
-import { PersistentBiMap } from "./util/persistent-bi-map";
-import { RenderedChangeSet } from "./util/rendered-change-set";
+import { BaseTypeToModel, BaseValue, ValueType } from "./types/model";
+import { Mutation } from "./types/mutation";
+import { SavedState } from "./types/saved-state";
 
 /**
  * Key-value store replica for a client connected to a Log2Log server.
@@ -12,7 +13,7 @@ import { RenderedChangeSet } from "./util/rendered-change-set";
  * In addition to accepting changes from the server, this class supports optimistic client operations
  * using [server reconciliation](https://mattweidner.com/2024/06/04/server-architectures.html#1-server-reconciliation).
  */
-export class ReconciliationClient<TTM extends BaseTypeToModel> {
+export class ReconciliationReplica<TTM extends BaseTypeToModel> {
   /** The latest authoritative state received from the server. */
   private serverState: PersistentBiMap<TTM, BaseValue>;
   /** The server state with all pending local mutations applied on top. */
@@ -23,15 +24,12 @@ export class ReconciliationClient<TTM extends BaseTypeToModel> {
   /**
    * The current diff serverState -> optimisticState.
    */
-  private optimisticDiff: RenderedChangeSet<TTM>;
+  optimisticDiff: RenderedChangeSet<TTM>;
 
-  constructor(
-    readonly typeToModel: TTM,
-    readonly initialState: SavedState<TTM>
-  ) {
+  constructor(readonly typeToModel: TTM, readonly initialState: SavedState) {
     // Load initial state.
     let state = PersistentBiMap.empty<TTM, BaseValue>();
-    for (const type of Object.keys(typeToModel) as (keyof TTM & string)[]) {
+    for (const type of Object.keys(typeToModel)) {
       const model = typeToModel[type];
       const savedValues = initialState[type];
       if (savedValues === undefined) continue;
@@ -49,7 +47,7 @@ export class ReconciliationClient<TTM extends BaseTypeToModel> {
    * Returns the value with the given type and id, or undefined if it does not exist.
    */
   get<K extends keyof TTM>(type: K, id: string): ValueType<TTM, K> | undefined {
-    const value = this.optimisticState.get(type as keyof TTM & string, id);
+    const value = this.optimisticState.get(type, id);
     return value as ValueType<TTM, K> | undefined;
   }
 
@@ -111,12 +109,17 @@ export class ReconciliationClient<TTM extends BaseTypeToModel> {
    * they are rerun on top of the new server state.
    * Any rerun mutations that throw become no-ops.
    *
-   * @returns The overall rendered changes to the current *optimistic* state.
+   * @param unsubscriptions Indicate any values that were unsubscribed
+   * along with this ChangeSet, so that we can delete them from our
+   * copy of the server state.
+   * @returns The overall rendered changes to the current *optimistic* state,
+   * including unsubscriptions.
    * These may be broader than necessary (e.g., if rerunning a
    * pending local mutation causes the same changes as its previous run).
    */
   applyServerChanges(
     changeSet: ChangeSet<TTM>,
+    unsubscriptions: BiSet<TTM>,
     confirmedMutationIds: string[]
   ): RenderedChangeSet<TTM> {
     // Confirmed mutations are now incorporated into the server state, so they
@@ -134,6 +137,12 @@ export class ReconciliationClient<TTM extends BaseTypeToModel> {
     const serverRendered = changeSet.render(this.serverState);
     this.serverState = changeState(this.serverState, serverRendered);
     overallChanges.applyRendered(serverRendered);
+
+    // Apply the unsubscriptions to this.serverState.
+    for (const [type, id] of unsubscriptions) {
+      this.serverState = this.serverState.delete(type, id);
+      overallChanges.delete(type, id);
+    }
 
     // Rerun the remaining pending mutations on top of the new server state to
     // rebuild the optimistic state. A rerun that throws is skipped (a no-op),
@@ -170,10 +179,10 @@ function changeState<TTM extends BaseTypeToModel>(
   rendered: RenderedChangeSet<TTM>
 ): PersistentBiMap<TTM, BaseValue> {
   let result = state;
-  for (const [type, id, value] of rendered.sets.entries()) {
+  for (const [type, id, value] of rendered.sets) {
     result = result.set(type, id, value);
   }
-  for (const [type, id] of rendered.deletes.entries()) {
+  for (const [type, id] of rendered.deletes) {
     result = result.delete(type, id);
   }
   return result;

@@ -1,5 +1,7 @@
-import { BaseTypeToModel, BaseValue } from "../model";
+import { GetState } from "../types/get-state";
+import { BaseTypeToModel, BaseValue } from "../types/model";
 import { BiMap } from "./bi-map";
+import { BiSet } from "./bi-set";
 import { ChangeSet } from "./change-set";
 
 /**
@@ -21,7 +23,7 @@ export class RenderedChangeSet<TTM extends BaseTypeToModel> {
     /**
      * The deleted keys.
      */
-    readonly deletes: BiMap<TTM, true> = new BiMap<TTM, true>()
+    readonly deletes: BiSet<TTM> = new BiSet()
   ) {}
 
   /**
@@ -35,22 +37,22 @@ export class RenderedChangeSet<TTM extends BaseTypeToModel> {
     /**
      * Gets the value at (type, id), or undefined if not present.
      */
-    get(type: keyof TTM & string, id: string): BaseValue | undefined;
+    get(type: keyof TTM, id: string): BaseValue | undefined;
   }): RenderedChangeSet<TTM> {
     const inverseSets = new BiMap<TTM, BaseValue>();
-    const inverseDeletes = new BiMap<TTM, true>();
+    const inverseDeletes = new BiSet();
 
-    for (const [type, id] of this.sets.entries()) {
+    for (const [type, id] of this.sets) {
       const beforeValue = beforeState.get(type, id);
       if (beforeValue === undefined) {
         // The value did not exist before, so the inverse deletes it.
-        inverseDeletes.set(type, id, true);
+        inverseDeletes.add(type, id);
       } else {
         inverseSets.set(type, id, beforeValue);
       }
     }
 
-    for (const [type, id] of this.deletes.entries()) {
+    for (const [type, id] of this.deletes) {
       const beforeValue = beforeState.get(type, id);
       if (beforeValue !== undefined) {
         // The value existed before, so the inverse restores it.
@@ -67,11 +69,11 @@ export class RenderedChangeSet<TTM extends BaseTypeToModel> {
    * Applies a RenderedChangeSet on top of this, modifying this in-place.
    */
   applyRendered(rendered: RenderedChangeSet<TTM>): void {
-    for (const [type, id, value] of rendered.sets.entries()) {
+    for (const [type, id, value] of rendered.sets) {
       this.set(type, id, value);
     }
 
-    for (const [type, id] of rendered.deletes.entries()) {
+    for (const [type, id] of rendered.deletes) {
       this.delete(type, id);
     }
   }
@@ -83,20 +85,12 @@ export class RenderedChangeSet<TTM extends BaseTypeToModel> {
    * the current state of this RenderedChangeSet, so that we can process updates
    * to values that we have not changed.
    */
-  apply(
-    changeSet: ChangeSet<TTM>,
-    state: {
-      /**
-       * Gets the value at (type, id), or undefined if not present.
-       */
-      get(type: keyof TTM & string, id: string): BaseValue | undefined;
-    }
-  ): void {
-    for (const [type, id, value] of changeSet.blindSets.entries()) {
+  apply(changeSet: ChangeSet<TTM>, state: GetState<TTM>): void {
+    for (const [type, id, value] of changeSet.blindSets) {
       this.set(type, id, value);
     }
 
-    for (const [type, id, valueUpdates] of changeSet.updates.entries()) {
+    for (const [type, id, valueUpdates] of changeSet.updates) {
       // The ChangeSet records only the update objects, so recover the final
       // value by applying them to this set's current value for the key.
       let currentValue = this.sets.get(type, id);
@@ -117,20 +111,20 @@ export class RenderedChangeSet<TTM extends BaseTypeToModel> {
       );
     }
 
-    for (const [type, id] of changeSet.deletes.entries()) {
+    for (const [type, id] of changeSet.deletes) {
       this.delete(type, id);
     }
   }
 
   /** Records (type, id) as a set of `value`, clearing any deletion of it. */
-  set(type: keyof TTM & string, id: string, value: BaseValue): void {
+  set(type: keyof TTM, id: string, value: BaseValue): void {
     this.sets.set(type, id, value);
     this.deletes.delete(type, id);
   }
 
   /** Records (type, id) as a deletion, clearing any set of it. */
-  delete(type: keyof TTM & string, id: string): void {
-    this.deletes.set(type, id, true);
+  delete(type: keyof TTM, id: string): void {
+    this.deletes.add(type, id);
     this.sets.delete(type, id);
   }
 }

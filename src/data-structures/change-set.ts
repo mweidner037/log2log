@@ -1,23 +1,41 @@
-import { BaseTypeToModel, BaseValue } from "../model";
+import * as z from "zod";
+import { GetState } from "../types/get-state";
+import { BaseTypeToModel, BaseValue } from "../types/model";
 import { BiMap } from "./bi-map";
+import { BiSet } from "./bi-set";
 import { RenderedChangeSet } from "./rendered-change-set";
 
 /**
  * JSON-serializable form of a {@link ChangeSet}.
  */
-export type SavedChangeSet<TTM extends BaseTypeToModel> = {
+export type SavedChangeSet = {
   /** Per-type blind sets and updates. */
-  values: {
-    [K in keyof TTM]: {
+  values: Record<
+    string,
+    {
       /** Blind-set values serialized to JSON. */
       blindSets: object[];
       /** Updates keyed by their value's id. */
       updates: { [id: string]: object[] };
-    };
-  };
+    }
+  >;
   /** Deletes, mapping type to an array of ids. */
-  deletes: { [K in keyof TTM]?: string[] };
+  deletes: Record<string, string[]>;
 };
+
+/**
+ * Zod schema for SavedChangeSet.
+ */
+export const zChangeSet: z.ZodType<SavedChangeSet> = z.object({
+  values: z.record(
+    z.string(),
+    z.object({
+      blindSets: z.array(z.any()),
+      updates: z.record(z.string(), z.array(z.any())),
+    })
+  ),
+  deletes: z.record(z.string(), z.array(z.any())),
+});
 
 /**
  * An atomic set of changes to the key-value store, suitable
@@ -35,16 +53,23 @@ export class ChangeSet<TTM extends BaseTypeToModel> {
      */
     readonly updates: BiMap<TTM, object[]> = new BiMap(),
     /**
-     * The deleted keys, represented using a set-as-map.
+     * The deleted keys.
      */
-    readonly deletes: BiMap<TTM, true> = new BiMap<TTM, true>()
+    readonly deletes: BiSet<TTM> = new BiSet()
   ) {}
 
   /**
    * Applies another ChangeSet on top of this one, modifying this one in-place.
+   *
+   * @param reject If supplied, rejected keys are skipped when iterating over changeSet.
    */
-  apply(changeSet: ChangeSet<TTM>): void {
-    for (const [type, id, value] of changeSet.blindSets.entries()) {
+  apply(
+    changeSet: ChangeSet<TTM>,
+    reject?: (type: keyof TTM, id: string) => boolean
+  ): void {
+    for (const [type, id, value] of changeSet.blindSets) {
+      if (reject?.(type, id)) continue;
+
       // A blind set overrides any earlier change to this key.
       this.updates.delete(type, id);
       this.deletes.delete(type, id);
@@ -52,7 +77,9 @@ export class ChangeSet<TTM extends BaseTypeToModel> {
       this.blindSets.set(type, id, value);
     }
 
-    for (const [type, id, valueUpdates] of changeSet.updates.entries()) {
+    for (const [type, id, valueUpdates] of changeSet.updates) {
+      if (reject?.(type, id)) continue;
+
       // An update overrides an earlier delete of this key.
       this.deletes.delete(type, id);
 
@@ -75,31 +102,28 @@ export class ChangeSet<TTM extends BaseTypeToModel> {
       }
     }
 
-    for (const [type, id] of changeSet.deletes.entries()) {
+    for (const [type, id] of changeSet.deletes) {
+      if (reject?.(type, id)) continue;
+
       // A delete overrides any earlier change to this key.
       this.blindSets.delete(type, id);
       this.updates.delete(type, id);
 
-      this.deletes.set(type, id, true);
+      this.deletes.add(type, id);
     }
   }
 
   /**
    * Renders this ChangeSet on top of the given state.
    */
-  render(state: {
-    /**
-     * Gets the value at (type, id), or undefined if not present.
-     */
-    get(type: keyof TTM & string, id: string): BaseValue | undefined;
-  }): RenderedChangeSet<TTM> {
+  render(state: GetState<TTM>): RenderedChangeSet<TTM> {
     const rendered = new RenderedChangeSet(this.typeToModel);
     rendered.apply(this, state);
     return rendered;
   }
 
-  save(): SavedChangeSet<TTM> {
-    const values = {} as SavedChangeSet<TTM>["values"];
+  save(): SavedChangeSet {
+    const values = {} as SavedChangeSet["values"];
     for (const type of Object.keys(this.typeToModel) as (keyof TTM &
       string)[]) {
       const model = this.typeToModel[type];
@@ -114,8 +138,8 @@ export class ChangeSet<TTM extends BaseTypeToModel> {
       values[type] = { blindSets, updates };
     }
 
-    const deletes: { [K in keyof TTM]?: string[] } = {};
-    for (const [type, id] of this.deletes.entries()) {
+    const deletes: Record<string, string[]> = {};
+    for (const [type, id] of this.deletes) {
       const ids = deletes[type];
       if (ids === undefined) deletes[type] = [id];
       else ids.push(id);
@@ -126,13 +150,11 @@ export class ChangeSet<TTM extends BaseTypeToModel> {
 
   static load<TTM extends BaseTypeToModel>(
     typeToModel: TTM,
-    json: object
+    saved: SavedChangeSet
   ): ChangeSet<TTM> {
-    const saved = json as SavedChangeSet<TTM>;
-
     const blindSets = new BiMap<TTM, BaseValue>();
     const updates = new BiMap<TTM, object[]>();
-    for (const type of Object.keys(saved.values) as (keyof TTM & string)[]) {
+    for (const type of Object.keys(saved.values)) {
       const model = typeToModel[type];
       const entry = saved.values[type];
       for (const savedValue of entry.blindSets) {
@@ -144,10 +166,10 @@ export class ChangeSet<TTM extends BaseTypeToModel> {
       }
     }
 
-    const deletes = new BiMap<TTM, true>();
-    for (const type of Object.keys(saved.deletes) as (keyof TTM & string)[]) {
-      const ids = saved.deletes[type]!;
-      for (const id of ids) deletes.set(type, id, true);
+    const deletes = new BiSet();
+    for (const type of Object.keys(saved.deletes)) {
+      const ids = saved.deletes[type];
+      for (const id of ids) deletes.add(type, id);
     }
 
     return new ChangeSet(typeToModel, blindSets, updates, deletes);

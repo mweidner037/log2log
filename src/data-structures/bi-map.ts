@@ -1,28 +1,16 @@
-import { BaseTypeToModel } from "../model";
+import { makeKey, parseKey } from "../internal/map-helpers";
+import { BaseTypeToModel } from "../types/model";
 
 /**
- * Creates a composite key from a type and id.
- */
-function makeKey(type: string, id: string): string {
-  return `${type}\\${id}`;
-}
-
-/**
- * Parses a composite key back into its type and id.
- */
-function parseKey<T extends string>(compositeKey: string): [T, string] {
-  const idx = compositeKey.indexOf("\\");
-  return [compositeKey.slice(0, idx) as T, compositeKey.slice(idx + 1)];
-}
-
-/**
- * Mutable analog of Map<Type, Map<Id, V>>, keyed by (type, id) pairs.
+ * Analog of Map<(type, id), V>.
  *
  * All mutation methods modify this instance in place.
+ *
+ * Type keys are assumed not to contain a colon ("\\").
  */
 export class BiMap<TTM extends BaseTypeToModel, V> {
   /**
-   * Maps `${type}\\${id}` to map value.
+   * Maps makeKey(type, id) to map value.
    */
   private state = new Map<string, V>();
 
@@ -36,21 +24,21 @@ export class BiMap<TTM extends BaseTypeToModel, V> {
   /**
    * Gets the value at (type, id), or undefined if not present.
    */
-  get(type: keyof TTM & string, id: string): V | undefined {
+  get(type: keyof TTM, id: string): V | undefined {
     return this.state.get(makeKey(type, id));
   }
 
   /**
    * Returns true if the map contains an entry at (type, id).
    */
-  has(type: keyof TTM & string, id: string): boolean {
+  has(type: keyof TTM, id: string): boolean {
     return this.state.has(makeKey(type, id));
   }
 
   /**
    * Sets the value at (type, id).
    */
-  set(type: keyof TTM & string, id: string, value: V): void {
+  set(type: keyof TTM, id: string, value: V): void {
     this.state.set(makeKey(type, id), value);
   }
 
@@ -58,16 +46,16 @@ export class BiMap<TTM extends BaseTypeToModel, V> {
    * Removes the entry at (type, id).
    * Returns true if an entry was removed, false if it didn't exist.
    */
-  delete(type: keyof TTM & string, id: string): boolean {
+  delete(type: keyof TTM, id: string): boolean {
     return this.state.delete(makeKey(type, id));
   }
 
   /**
    * Returns all entries for a given type as an array of [id, value] pairs.
    */
-  getInner(type: keyof TTM & string): Array<[string, V]> {
+  getInner(type: keyof TTM): Array<[string, V]> {
     const results: Array<[string, V]> = [];
-    const prefix = type + "\\";
+    const prefix = (type as keyof TTM & string) + "\\";
     for (const [compositeKey, value] of this.state) {
       if (compositeKey.startsWith(prefix)) {
         results.push([compositeKey.slice(prefix.length), value]);
@@ -79,8 +67,8 @@ export class BiMap<TTM extends BaseTypeToModel, V> {
   /**
    * Returns true if there are any entries for the given type.
    */
-  hasInner(type: keyof TTM & string): boolean {
-    const prefix = type + "\\";
+  hasInner(type: keyof TTM): boolean {
+    const prefix = (type as keyof TTM & string) + "\\";
     for (const compositeKey of this.state.keys()) {
       if (compositeKey.startsWith(prefix)) {
         return true;
@@ -92,8 +80,8 @@ export class BiMap<TTM extends BaseTypeToModel, V> {
   /**
    * Removes all entries for the given type.
    */
-  deleteInner(type: keyof TTM & string): void {
-    const prefix = type + "\\";
+  deleteInner(type: keyof TTM): void {
+    const prefix = (type as keyof TTM & string) + "\\";
     for (const compositeKey of this.state.keys()) {
       if (compositeKey.startsWith(prefix)) {
         this.state.delete(compositeKey);
@@ -121,6 +109,10 @@ export class BiMap<TTM extends BaseTypeToModel, V> {
       const [type, id] = parseKey<keyof TTM & string>(compositeKey);
       yield [type, id, value];
     }
+  }
+
+  [Symbol.iterator]() {
+    return this.entries();
   }
 
   /**

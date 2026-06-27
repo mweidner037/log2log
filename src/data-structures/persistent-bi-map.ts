@@ -1,24 +1,9 @@
 import createRBTree from "functional-red-black-tree";
-import { BaseTypeToModel } from "../model";
+import { makeKey, parseKey } from "../internal/map-helpers";
+import { BaseTypeToModel } from "../types/model";
 
 /**
- * Creates a composite key from a type and id.
- */
-function makeKey(type: string, id: string): string {
-  return `${type}\\${id}`;
-}
-
-/**
- * Parses a composite key back into its type and id.
- */
-function parseKey<T extends string>(compositeKey: string): [T, string] {
-  const idx = compositeKey.indexOf("\\");
-  return [compositeKey.slice(0, idx) as T, compositeKey.slice(idx + 1)];
-}
-
-/**
- * Persistent (immutable) analog of {@link BiMap}, i.e., of Map<Type, Map<Id, V>>
- * keyed by (type, id) pairs.
+ * Persistent (immutable) analog of Map<(type, id), V>.
  *
  * All mutation methods return a new instance, leaving the original unchanged.
  * Uses a functional red-black tree internally for efficient persistent
@@ -50,7 +35,7 @@ export class PersistentBiMap<TTM extends BaseTypeToModel, V> {
   /**
    * Gets the value at (type, id), or undefined if not present.
    */
-  get(type: keyof TTM & string, id: string): V | undefined {
+  get(type: keyof TTM, id: string): V | undefined {
     const result = this.tree.get(makeKey(type, id));
     // The library returns void for missing keys; convert to undefined.
     return result === undefined ? undefined : result;
@@ -59,14 +44,14 @@ export class PersistentBiMap<TTM extends BaseTypeToModel, V> {
   /**
    * Returns true if the map contains an entry at (type, id).
    */
-  has(type: keyof TTM & string, id: string): boolean {
+  has(type: keyof TTM, id: string): boolean {
     return this.tree.find(makeKey(type, id)).valid;
   }
 
   /**
    * Returns a new map with the value set at (type, id).
    */
-  set(type: keyof TTM & string, id: string, value: V): PersistentBiMap<TTM, V> {
+  set(type: keyof TTM, id: string, value: V): PersistentBiMap<TTM, V> {
     const key = makeKey(type, id);
     // Remove any existing entry first, then insert the new one.
     const inserted = this.tree.remove(key).insert(key, value);
@@ -77,7 +62,7 @@ export class PersistentBiMap<TTM extends BaseTypeToModel, V> {
    * Returns a new map with the entry at (type, id) removed.
    * If the entry doesn't exist, returns this map unchanged.
    */
-  delete(type: keyof TTM & string, id: string): PersistentBiMap<TTM, V> {
+  delete(type: keyof TTM, id: string): PersistentBiMap<TTM, V> {
     const key = makeKey(type, id);
     if (!this.tree.find(key).valid) {
       return this;
@@ -88,9 +73,9 @@ export class PersistentBiMap<TTM extends BaseTypeToModel, V> {
   /**
    * Returns all entries for a given type as an array of [id, value] pairs.
    */
-  getInner(type: keyof TTM & string): Array<[string, V]> {
+  getInner(type: keyof TTM): Array<[string, V]> {
     const results: Array<[string, V]> = [];
-    const prefix = type + "\\";
+    const prefix = (type as keyof TTM & string) + "\\";
     // Find the first key >= prefix, then walk while the prefix matches.
     const iter = this.tree.ge(prefix);
     while (iter.valid) {
@@ -107,8 +92,8 @@ export class PersistentBiMap<TTM extends BaseTypeToModel, V> {
   /**
    * Returns true if there are any entries for the given type.
    */
-  hasInner(type: keyof TTM & string): boolean {
-    const prefix = type + "\\";
+  hasInner(type: keyof TTM): boolean {
+    const prefix = (type as keyof TTM & string) + "\\";
     const iter = this.tree.ge(prefix);
     return iter.valid && iter.key !== undefined && iter.key.startsWith(prefix);
   }
@@ -117,8 +102,8 @@ export class PersistentBiMap<TTM extends BaseTypeToModel, V> {
    * Returns a new map with all entries for the given type removed.
    * If there are no such entries, returns this map unchanged.
    */
-  deleteInner(type: keyof TTM & string): PersistentBiMap<TTM, V> {
-    const prefix = type + "\\";
+  deleteInner(type: keyof TTM): PersistentBiMap<TTM, V> {
+    const prefix = (type as keyof TTM & string) + "\\";
     const keysToRemove: string[] = [];
 
     // Collect all keys with the given prefix.
@@ -167,6 +152,10 @@ export class PersistentBiMap<TTM extends BaseTypeToModel, V> {
       yield [type, id, iter.value as V];
       iter.next();
     }
+  }
+
+  [Symbol.iterator]() {
+    return this.entries();
   }
 
   /**

@@ -1,10 +1,10 @@
+import { BiMap } from "./data-structures/bi-map";
+import { ChangeSet } from "./data-structures/change-set";
+import { RenderedChangeSet } from "./data-structures/rendered-change-set";
 import { TransactionImpl } from "./internal/transaction-impl";
-import { BaseTypeToModel, BaseValue } from "./model";
-import { Mutation } from "./mutation";
-import { SavedState } from "./saved-state";
-import { BiMap } from "./util/bi-map";
-import { ChangeSet } from "./util/change-set";
-import { RenderedChangeSet } from "./util/rendered-change-set";
+import { BaseTypeToModel, BaseValue } from "./types/model";
+import { Mutation } from "./types/mutation";
+import { SavedState } from "./types/saved-state";
 
 export type MutationResult<TTM extends BaseTypeToModel> =
   | {
@@ -26,12 +26,9 @@ export type MutationResult<TTM extends BaseTypeToModel> =
 export class Log2Log<TTM extends BaseTypeToModel> {
   private readonly state = new BiMap<TTM, BaseValue>();
 
-  constructor(
-    readonly typeToModel: TTM,
-    readonly initialState: SavedState<TTM>
-  ) {
+  constructor(readonly typeToModel: TTM, readonly initialState: SavedState) {
     // Load initial state.
-    for (const type of Object.keys(typeToModel) as (keyof TTM & string)[]) {
+    for (const type of Object.keys(typeToModel)) {
       const model = typeToModel[type];
       const savedValues = initialState[type];
       if (savedValues === undefined) continue;
@@ -83,15 +80,14 @@ export class Log2Log<TTM extends BaseTypeToModel> {
    * Returns the current state as a {@link SavedState}, with one array of values
    * per type (empty for types that have no values).
    */
-  save(): SavedState<TTM> {
-    const result = {} as SavedState<TTM>;
+  save(): SavedState {
+    const result = {} as SavedState;
     for (const type of Object.keys(this.typeToModel) as (keyof TTM &
       string)[]) {
       const model = this.typeToModel[type];
       result[type] = this.state
         .getInner(type)
-        .map(([, value]) => model.save(value)) as SavedState<TTM>[keyof TTM &
-        string];
+        .map(([, value]) => model.save(value));
     }
     return result;
   }
@@ -101,10 +97,10 @@ function changeState<TTM extends BaseTypeToModel>(
   state: BiMap<TTM, BaseValue>,
   rendered: RenderedChangeSet<TTM>
 ): void {
-  for (const [type, id, value] of rendered.sets.entries()) {
+  for (const [type, id, value] of rendered.sets) {
     state.set(type, id, value);
   }
-  for (const [type, id] of rendered.deletes.entries()) {
+  for (const [type, id] of rendered.deletes) {
     state.delete(type, id);
   }
 }

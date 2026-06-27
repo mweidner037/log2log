@@ -1,19 +1,5 @@
+/* tsconfig for VSCode and eslint that includes everything. */
 {
-  "compilerOptions": {
-    "rootDir": "src",
-    "outDir": "build/esm",
-    "target": "es2022",
-    "module": "es2022",
-    "moduleResolution": "bundler",
-    /* Enable strict type checking. */
-    "strict": true,
-    /* Enable interop with dependencies using different module systems. */
-    "esModuleInterop": true,
-    /* Emit .d.ts files. */
-    "declaration": true,
-    /* Emit sourcemap files. */
-    "sourceMap": true
-    /* Don't turn on importHelpers, so we can avoid tslib dependency. */
-  },
-  "include": ["src"]
+  "extends": "./tsconfig.base.json",
+  "include": ["src", "test"]
 }

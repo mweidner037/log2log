@@ -1,13 +1,14 @@
 import { assert } from "chai";
 import { describe, it } from "mocha";
 
+import { BiSet } from "../src";
+import { BiMap } from "../src/data-structures/bi-map";
+import { ChangeSet } from "../src/data-structures/change-set";
+import { RenderedChangeSet } from "../src/data-structures/rendered-change-set";
 import { Log2Log } from "../src/log2log";
-import { BaseValue } from "../src/model";
-import { Mutation } from "../src/mutation";
-import { ReconciliationClient } from "../src/reconciliation-client";
-import { BiMap } from "../src/util/bi-map";
-import { ChangeSet } from "../src/util/change-set";
-import { RenderedChangeSet } from "../src/util/rendered-change-set";
+import { ReconciliationReplica } from "../src/reconciliation-replica";
+import { BaseValue } from "../src/types/model";
+import { Mutation } from "../src/types/mutation";
 import {
   Counter,
   Register,
@@ -20,8 +21,8 @@ import {
 /* Helpers.                                                                    */
 /* -------------------------------------------------------------------------- */
 
-function newClient(): ReconciliationClient<TTM> {
-  return new ReconciliationClient(typeToModel, newInitialState());
+function newClient(): ReconciliationReplica<TTM> {
+  return new ReconciliationReplica(typeToModel, newInitialState());
 }
 
 /** A standalone server, used to produce realistic ChangeSets for the client. */
@@ -154,7 +155,11 @@ describe("ReconciliationClient", () => {
         count: 10,
       });
       // The mutation was not stored: a later server change does not rerun it.
-      const changes = client.applyServerChanges(emptyChangeSet(), []);
+      const changes = client.applyServerChanges(
+        emptyChangeSet(),
+        new BiSet(),
+        []
+      );
       assert.strictEqual(changes.sets.size, 0);
       assert.strictEqual(changes.deletes.size, 0);
       assert.deepEqual(client.get("counter", "a"), {
@@ -197,7 +202,7 @@ describe("ReconciliationClient", () => {
       const server = newServer();
       const changes = serverChanges(server, mut(addCounter("a", 5)));
 
-      const blindSets = client.applyServerChanges(changes, ["m1"]);
+      const blindSets = client.applyServerChanges(changes, new BiSet(), ["m1"]);
       // The optimistic state matches the server state: count 15, applied once.
       assert.deepEqual(client.get("counter", "a"), {
         type: "counter",
@@ -214,7 +219,7 @@ describe("ReconciliationClient", () => {
       const server2 = newServer();
       server2.applyMutations([mut(addCounter("a", 5))]);
       const changes2 = serverChanges(server2, mut(addCounter("a", 1)));
-      client.applyServerChanges(changes2, []);
+      client.applyServerChanges(changes2, new BiSet(), []);
       assert.deepEqual(client.get("counter", "a"), {
         type: "counter",
         id: "a",
@@ -230,7 +235,7 @@ describe("ReconciliationClient", () => {
       const server = newServer();
       const changes = serverChanges(server, mut(addCounter("a", 100)));
 
-      const blindSets = client.applyServerChanges(changes, []);
+      const blindSets = client.applyServerChanges(changes, new BiSet(), []);
       // Server state is 110; m1 is rerun on top of it: 115.
       assert.deepEqual(client.get("counter", "a"), {
         type: "counter",
@@ -253,7 +258,7 @@ describe("ReconciliationClient", () => {
       const server = newServer();
       const changes = serverChanges(server, mut(addCounter("a", 1)));
 
-      client.applyServerChanges(changes, []);
+      client.applyServerChanges(changes, new BiSet(), []);
       // Both reruns apply in order, so the last writer ("second") wins.
       assert.deepEqual(client.get("register", "r"), {
         type: "register",
@@ -282,7 +287,7 @@ describe("ReconciliationClient", () => {
 
       // Server jumps the counter to 200; the rerun throws and is skipped.
       const bigChanges = serverChanges(server, mut(addCounter("a", 190)));
-      client.applyServerChanges(bigChanges, []);
+      client.applyServerChanges(bigChanges, new BiSet(), []);
       assert.deepEqual(client.get("counter", "a"), {
         type: "counter",
         id: "a",
@@ -292,7 +297,7 @@ describe("ReconciliationClient", () => {
       // Later the server brings it back down to 50; the still-pending mutation
       // now succeeds on rerun.
       const smallChanges = serverChanges(server, mut(addCounter("a", -150)));
-      client.applyServerChanges(smallChanges, []);
+      client.applyServerChanges(smallChanges, new BiSet(), []);
       assert.deepEqual(client.get("counter", "a"), {
         type: "counter",
         id: "a",
@@ -305,7 +310,7 @@ describe("ReconciliationClient", () => {
       const server = newServer();
       const changes = serverChanges(server, mut(setRegister("r", "remote")));
 
-      const blindSets = client.applyServerChanges(changes, []);
+      const blindSets = client.applyServerChanges(changes, new BiSet(), []);
       assert.deepEqual(client.get("register", "r"), {
         type: "register",
         id: "r",
@@ -338,7 +343,7 @@ describe("ReconciliationClient", () => {
       // does not confirm m1.
       const server = newServer();
       const changes = serverChanges(server, mut(addCounter("a", 200)));
-      const blindSets = client.applyServerChanges(changes, []);
+      const blindSets = client.applyServerChanges(changes, new BiSet(), []);
 
       // On rerun, m1 no longer sets "r", so the optimistic "r" rolls back to the
       // server value. That rollback must show up in the returned blind sets, so
@@ -373,7 +378,9 @@ describe("ReconciliationClient", () => {
       // The server processed m1 but its mutation failed there (a no-op), so m1
       // is confirmed without any server changes. "b" never existed on the
       // server, so it must be deleted from the optimistic state.
-      const changes = client.applyServerChanges(emptyChangeSet(), ["m1"]);
+      const changes = client.applyServerChanges(emptyChangeSet(), new BiSet(), [
+        "m1",
+      ]);
       assert.isUndefined(client.get("counter", "b"));
       assert.strictEqual(changes.sets.size, 0);
       assert.strictEqual(changes.deletes.size, 1);
@@ -389,7 +396,7 @@ describe("ReconciliationClient", () => {
         mut((tx) => tx.delete("counter", "a"))
       );
 
-      const rendered = client.applyServerChanges(changes, []);
+      const rendered = client.applyServerChanges(changes, new BiSet(), []);
       assert.isUndefined(client.get("counter", "a"));
       assert.strictEqual(rendered.sets.size, 0);
       assert.strictEqual(rendered.deletes.size, 1);
@@ -408,7 +415,7 @@ describe("ReconciliationClient", () => {
         mut((tx) => tx.delete("register", "r"))
       );
 
-      const rendered = client.applyServerChanges(changes, []);
+      const rendered = client.applyServerChanges(changes, new BiSet(), []);
       // The unconfirmed optimistic mutation is reapplied on top of the new
       // server state, so "a" stays bumped while "r" is deleted.
       assert.deepEqual(client.get("counter", "a"), {

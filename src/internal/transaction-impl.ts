@@ -1,14 +1,16 @@
+import { BiMap } from "../data-structures/bi-map";
+import { BiSet } from "../data-structures/bi-set";
+import { ChangeSet } from "../data-structures/change-set";
+import { RenderedChangeSet } from "../data-structures/rendered-change-set";
+import { GetState } from "../types/get-state";
 import {
   BaseTypeToModel,
   BaseValue,
   MutableValue,
   MutableValueType,
   ValueType,
-} from "../model";
-import { Transaction } from "../transaction";
-import { BiMap } from "../util/bi-map";
-import { ChangeSet } from "../util/change-set";
-import { RenderedChangeSet } from "../util/rendered-change-set";
+} from "../types/model";
+import { Transaction } from "../types/transaction";
 
 /**
  * A single active mutable value within a transaction.
@@ -45,20 +47,15 @@ export class TransactionImpl<TTM extends BaseTypeToModel>
   /**
    * Deleted values.
    */
-  private readonly deletes = new BiMap<TTM, true>();
+  private readonly deletes = new BiSet<TTM>();
 
   constructor(
     private readonly typeToModel: TTM,
-    private readonly state: {
-      /**
-       * Gets the value at (type, id), or undefined if not present.
-       */
-      get(type: keyof TTM & string, id: string): BaseValue | undefined;
-    }
+    private readonly state: GetState<TTM>
   ) {}
 
   get<K extends keyof TTM>(type: K, id: string): ValueType<TTM, K> | undefined {
-    const t = type as keyof TTM & string;
+    const t = type;
 
     // A blind set shows up for future reads.
     const blind = this.blindSets.get(t, id);
@@ -102,7 +99,7 @@ export class TransactionImpl<TTM extends BaseTypeToModel>
     id: string,
     initialValue?: ValueType<TTM, K>
   ): MutableValueType<TTM, K> | undefined {
-    const t = type as keyof TTM & string;
+    const t = type;
 
     // If we already have a mutable for this value, return the same one.
     const existing = this.mutables.get(t, id);
@@ -158,7 +155,7 @@ export class TransactionImpl<TTM extends BaseTypeToModel>
   }
 
   set<K extends keyof TTM>(value: ValueType<TTM, K>): void {
-    const t = value.type as keyof TTM & string;
+    const t = value.type;
     // Override any active mutable version: its changes will not be committed.
     this.mutables.delete(t, value.id);
     // A set overrides any earlier delete of this key.
@@ -168,13 +165,13 @@ export class TransactionImpl<TTM extends BaseTypeToModel>
   }
 
   delete<K extends keyof TTM>(type: K, id: string): void {
-    const t = type as keyof TTM & string;
+    const t = type;
     // Override any pending set or active mutable version: the net effect is a
     // delete, so their changes will not be committed.
     this.blindSets.delete(t, id);
     this.mutables.delete(t, id);
 
-    this.deletes.set(t, id, true);
+    this.deletes.add(t, id);
   }
 
   /**
@@ -188,12 +185,12 @@ export class TransactionImpl<TTM extends BaseTypeToModel>
     const updates = new BiMap<TTM, object[]>();
     const allSets = new BiMap<TTM, BaseValue>();
 
-    for (const [type, id, value] of this.blindSets.entries()) {
+    for (const [type, id, value] of this.blindSets) {
       blindSets.set(type, id, value);
       allSets.set(type, id, value);
     }
 
-    for (const [type, id, entry] of this.mutables.entries()) {
+    for (const [type, id, entry] of this.mutables) {
       if (entry.fromState) {
         // An existing value was mutated: commit the changes as updates, and
         // record its final value (straight from __finish) in allSets.

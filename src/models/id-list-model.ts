@@ -1,5 +1,5 @@
 import { ElementId, IdList, SavedIdList } from "articulated";
-import { BaseValue, DefModel, MutableValue } from "../model";
+import { BaseValue, DefModel, MutableValue } from "../types/model";
 
 export interface IdListValue<K extends string = string> extends BaseValue<K> {
   readonly list: IdList;
@@ -193,7 +193,6 @@ export function defineIdListModel<K extends string>(
   };
 }
 
-// TODO: Move to articulated?
 /**
  * Given an IdList and an iterable of list elements that are labeled by its ids,
  * returns an array of the list elements in id order.
