@@ -2,6 +2,9 @@ import * as z from "zod";
 import { BaseTypeToModel } from "../types/model";
 import { BiSet } from "./bi-set";
 
+/**
+ * JSON-serializable form of a SubscriptionDelta.
+ */
 export type SavedSubscriptionDelta = {
   /** Adds, mapping type to an array of ids. */
   adds: Record<string, string[]>;
