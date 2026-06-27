@@ -4,15 +4,6 @@ import { SubscriptionDelta } from "./data-structures/subscription-delta";
 import { GetState } from "./types/get-state";
 import { BaseTypeToModel } from "./types/model";
 
-// TODO: on the server, wait to ack sub deletes until you have a real change.
-// TODO: caller rate limiting:
-// - Rate limit subscription deltas at endpoint, merging them as they come in.
-// - Hold back subscription deletes until the next processChanges call.
-// - Process subscription adds immediately in this process.
-// - Batch ChangeSets in the Log2Log service, merging them before distributing
-// to SubscriptionServers.
-// - Process ChangeSets immediately in this process.
-
 export class SubscriptionServer<TTM extends BaseTypeToModel> {
   private readonly subscriptions = new BiMap<TTM, true>();
 

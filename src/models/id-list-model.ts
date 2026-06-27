@@ -193,7 +193,6 @@ export function defineIdListModel<K extends string>(
   };
 }
 
-// TODO: Move to articulated?
 /**
  * Given an IdList and an iterable of list elements that are labeled by its ids,
  * returns an array of the list elements in id order.

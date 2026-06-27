@@ -3,10 +3,6 @@ import { SubscriptionDelta } from "./data-structures/subscription-delta";
 import { ReconciliationReplica } from "./reconciliation-replica";
 import { BaseTypeToModel } from "./types/model";
 
-// TODO: Send delete unsubs lazily? Or aggressively batched.
-// To avoid too many messages when moving around + prefetch thrashed content,
-// at the cost of getting unneeded data from the server.
-
 export class SubscriptionClient<TTM extends BaseTypeToModel> {
   private readonly activeSubscriptions = new BiMap<TTM, true>();
   private readonly requestedSubscriptions = new BiMap<TTM, true>();
