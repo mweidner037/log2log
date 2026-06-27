@@ -2,6 +2,7 @@ import * as z from "zod";
 import { GetState } from "../types/get-state";
 import { BaseTypeToModel, BaseValue } from "../types/model";
 import { BiMap } from "./bi-map";
+import { BiSet } from "./bi-set";
 import { RenderedChangeSet } from "./rendered-change-set";
 
 /**
@@ -52,9 +53,9 @@ export class ChangeSet<TTM extends BaseTypeToModel> {
      */
     readonly updates: BiMap<TTM, object[]> = new BiMap(),
     /**
-     * The deleted keys, represented using a set-as-map.
+     * The deleted keys.
      */
-    readonly deletes: BiMap<TTM, true> = new BiMap<TTM, true>()
+    readonly deletes: BiSet<TTM> = new BiSet()
   ) {}
 
   /**
@@ -101,14 +102,14 @@ export class ChangeSet<TTM extends BaseTypeToModel> {
       }
     }
 
-    for (const [type, id] of changeSet.deletes.entries()) {
+    for (const [type, id] of changeSet.deletes.values()) {
       if (reject?.(type, id)) continue;
 
       // A delete overrides any earlier change to this key.
       this.blindSets.delete(type, id);
       this.updates.delete(type, id);
 
-      this.deletes.set(type, id, true);
+      this.deletes.add(type, id);
     }
   }
 
@@ -138,7 +139,7 @@ export class ChangeSet<TTM extends BaseTypeToModel> {
     }
 
     const deletes: Record<string, string[]> = {};
-    for (const [type, id] of this.deletes.entries()) {
+    for (const [type, id] of this.deletes.values()) {
       const ids = deletes[type];
       if (ids === undefined) deletes[type] = [id];
       else ids.push(id);
@@ -167,10 +168,10 @@ export class ChangeSet<TTM extends BaseTypeToModel> {
       }
     }
 
-    const deletes = new BiMap<TTM, true>();
+    const deletes = new BiSet();
     for (const type of Object.keys(saved.deletes)) {
       const ids = saved.deletes[type];
-      for (const id of ids) deletes.set(type, id, true);
+      for (const id of ids) deletes.add(type, id);
     }
 
     return new ChangeSet(typeToModel, blindSets, updates, deletes);

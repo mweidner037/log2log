@@ -1,4 +1,4 @@
-import { BiMap } from "./data-structures/bi-map";
+import { BiSet } from "./data-structures/bi-set";
 import { ChangeSet } from "./data-structures/change-set";
 import { PersistentBiMap } from "./data-structures/persistent-bi-map";
 import { RenderedChangeSet } from "./data-structures/rendered-change-set";
@@ -119,7 +119,7 @@ export class ReconciliationReplica<TTM extends BaseTypeToModel> {
    */
   applyServerChanges(
     changeSet: ChangeSet<TTM>,
-    unsubscriptions: BiMap<TTM, true>,
+    unsubscriptions: BiSet<TTM>,
     confirmedMutationIds: string[]
   ): RenderedChangeSet<TTM> {
     // Confirmed mutations are now incorporated into the server state, so they
@@ -139,7 +139,7 @@ export class ReconciliationReplica<TTM extends BaseTypeToModel> {
     overallChanges.applyRendered(serverRendered);
 
     // Apply the unsubscriptions to this.serverState.
-    for (const [type, id] of unsubscriptions.entries()) {
+    for (const [type, id] of unsubscriptions.values()) {
       this.serverState = this.serverState.delete(type, id);
       overallChanges.delete(type, id);
     }
@@ -182,7 +182,7 @@ function changeState<TTM extends BaseTypeToModel>(
   for (const [type, id, value] of rendered.sets.entries()) {
     result = result.set(type, id, value);
   }
-  for (const [type, id] of rendered.deletes.entries()) {
+  for (const [type, id] of rendered.deletes.values()) {
     result = result.delete(type, id);
   }
   return result;

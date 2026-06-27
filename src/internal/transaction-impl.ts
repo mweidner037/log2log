@@ -1,4 +1,5 @@
 import { BiMap } from "../data-structures/bi-map";
+import { BiSet } from "../data-structures/bi-set";
 import { ChangeSet } from "../data-structures/change-set";
 import { RenderedChangeSet } from "../data-structures/rendered-change-set";
 import { GetState } from "../types/get-state";
@@ -46,7 +47,7 @@ export class TransactionImpl<TTM extends BaseTypeToModel>
   /**
    * Deleted values.
    */
-  private readonly deletes = new BiMap<TTM, true>();
+  private readonly deletes = new BiSet<TTM>();
 
   constructor(
     private readonly typeToModel: TTM,
@@ -170,7 +171,7 @@ export class TransactionImpl<TTM extends BaseTypeToModel>
     this.blindSets.delete(t, id);
     this.mutables.delete(t, id);
 
-    this.deletes.set(t, id, true);
+    this.deletes.add(t, id);
   }
 
   /**

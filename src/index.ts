@@ -1,4 +1,5 @@
 export * from "./data-structures/bi-map";
+export * from "./data-structures/bi-set";
 export * from "./data-structures/change-set";
 export * from "./data-structures/persistent-bi-map";
 export * from "./data-structures/rendered-change-set";

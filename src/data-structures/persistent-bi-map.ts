@@ -1,24 +1,9 @@
 import createRBTree from "functional-red-black-tree";
+import { makeKey, parseKey } from "../internal/map-helpers";
 import { BaseTypeToModel } from "../types/model";
 
 /**
- * Creates a composite key from a type and id.
- */
-function makeKey(type: unknown, id: string): string {
-  return `${type}\\${id}`;
-}
-
-/**
- * Parses a composite key back into its type and id.
- */
-function parseKey<T extends string>(compositeKey: string): [T, string] {
-  const idx = compositeKey.indexOf("\\");
-  return [compositeKey.slice(0, idx) as T, compositeKey.slice(idx + 1)];
-}
-
-/**
- * Persistent (immutable) analog of {@link BiMap}, i.e., of Map<Type, Map<Id, V>>
- * keyed by (type, id) pairs.
+ * Persistent (immutable) analog of Map<(type, id), V>.
  *
  * All mutation methods return a new instance, leaving the original unchanged.
  * Uses a functional red-black tree internally for efficient persistent
@@ -147,7 +132,9 @@ export class PersistentBiMap<TTM extends BaseTypeToModel, V> {
    * Iterates over all entries in the map, calling the visitor for each.
    * Iteration order is lexicographic by (type, id).
    */
-  forEach(visitor: (type: keyof TTM, id: string, value: V) => void): void {
+  forEach(
+    visitor: (type: keyof TTM & string, id: string, value: V) => void
+  ): void {
     this.tree.forEach((compositeKey, value) => {
       const [type, id] = parseKey<keyof TTM & string>(compositeKey);
       visitor(type, id, value);
@@ -158,7 +145,7 @@ export class PersistentBiMap<TTM extends BaseTypeToModel, V> {
    * Returns an iterator over all entries as [type, id, value] tuples.
    * Iteration order is lexicographic by (type, id).
    */
-  *entries(): IterableIterator<[keyof TTM, string, V]> {
+  *entries(): IterableIterator<[keyof TTM & string, string, V]> {
     const iter = this.tree.begin;
     while (iter.valid) {
       const [type, id] = parseKey<keyof TTM & string>(iter.key as string);
@@ -182,8 +169,8 @@ export class PersistentBiMap<TTM extends BaseTypeToModel, V> {
   /**
    * Returns all unique type keys.
    */
-  outerKeys(): Set<keyof TTM> {
-    const seen = new Set<keyof TTM>();
+  outerKeys(): Set<keyof TTM & string> {
+    const seen = new Set<keyof TTM & string>();
     this.tree.forEach((compositeKey) => {
       const [type] = parseKey<keyof TTM & string>(compositeKey);
       seen.add(type);

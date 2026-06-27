@@ -1,6 +1,6 @@
 import * as z from "zod";
 import { BaseTypeToModel } from "../types/model";
-import { BiMap } from "./bi-map";
+import { BiSet } from "./bi-set";
 
 export type SavedSubscriptionDelta = {
   /** Adds, mapping type to an array of ids. */
@@ -19,42 +19,42 @@ export const zSubscriptionDelta: z.ZodType<SavedSubscriptionDelta> = z.object({
 
 export class SubscriptionDelta<TTM extends BaseTypeToModel> {
   constructor(
-    readonly adds = new BiMap<TTM, true>(),
-    readonly deletes = new BiMap<TTM, true>()
+    readonly adds = new BiSet<TTM>(),
+    readonly deletes = new BiSet<TTM>()
   ) {}
 
   /**
    * Applies another SubscriptionDelta on top of this one, modifying this one in-place.
    */
   apply(delta: SubscriptionDelta<TTM>): void {
-    for (const [type, id] of delta.adds.entries()) {
+    for (const [type, id] of delta.adds.values()) {
       this.add(type, id);
     }
-    for (const [type, id] of delta.deletes.entries()) {
+    for (const [type, id] of delta.deletes.values()) {
       this.delete(type, id);
     }
   }
 
   add<K extends keyof TTM>(type: K, id: string): void {
-    this.adds.set(type, id, true);
+    this.adds.add(type, id);
     this.deletes.delete(type, id);
   }
 
   delete<K extends keyof TTM>(type: K, id: string): void {
-    this.deletes.set(type, id, true);
+    this.deletes.add(type, id);
     this.adds.delete(type, id);
   }
 
   save(): SavedSubscriptionDelta {
     const adds: Record<string, string[]> = {};
-    for (const [type, id] of this.adds.entries()) {
+    for (const [type, id] of this.adds.values()) {
       const ids = adds[type];
       if (ids === undefined) adds[type] = [id];
       else ids.push(id);
     }
 
     const deletes: Record<string, string[]> = {};
-    for (const [type, id] of this.deletes.entries()) {
+    for (const [type, id] of this.deletes.values()) {
       const ids = deletes[type];
       if (ids === undefined) deletes[type] = [id];
       else ids.push(id);
@@ -68,14 +68,14 @@ export class SubscriptionDelta<TTM extends BaseTypeToModel> {
   ): SubscriptionDelta<TTM> {
     const saved = json as SavedSubscriptionDelta;
 
-    const adds = new BiMap<TTM, true>();
+    const adds = new BiSet();
     for (const type of Object.keys(saved.adds)) {
-      for (const id of saved.adds[type]) adds.set(type, id, true);
+      for (const id of saved.adds[type]) adds.add(type, id);
     }
 
-    const deletes = new BiMap<TTM, true>();
+    const deletes = new BiSet();
     for (const type of Object.keys(saved.deletes)) {
-      for (const id of saved.deletes[type]) deletes.set(type, id, true);
+      for (const id of saved.deletes[type]) deletes.add(type, id);
     }
 
     return new SubscriptionDelta(adds, deletes);

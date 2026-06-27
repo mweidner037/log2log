@@ -1,28 +1,16 @@
+import { makeKey, parseKey } from "../internal/map-helpers";
 import { BaseTypeToModel } from "../types/model";
 
 /**
- * Creates a composite key from a type and id.
- */
-function makeKey(type: unknown, id: string): string {
-  return `${type}\\${id}`;
-}
-
-/**
- * Parses a composite key back into its type and id.
- */
-function parseKey<T extends string>(compositeKey: string): [T, string] {
-  const idx = compositeKey.indexOf("\\");
-  return [compositeKey.slice(0, idx) as T, compositeKey.slice(idx + 1)];
-}
-
-/**
- * Mutable analog of Map<Type, Map<Id, V>>, keyed by (type, id) pairs.
+ * Analog of Map<(type, id), V>.
  *
  * All mutation methods modify this instance in place.
+ *
+ * Type keys are assumed not to contain a colon ("\\").
  */
 export class BiMap<TTM extends BaseTypeToModel, V> {
   /**
-   * Maps `${type}\\${id}` to map value.
+   * Maps makeKey(type, id) to map value.
    */
   private state = new Map<string, V>();
 
@@ -104,7 +92,9 @@ export class BiMap<TTM extends BaseTypeToModel, V> {
   /**
    * Iterates over all entries in the map, calling the visitor for each.
    */
-  forEach(visitor: (type: keyof TTM, id: string, value: V) => void): void {
+  forEach(
+    visitor: (type: keyof TTM & string, id: string, value: V) => void
+  ): void {
     for (const [compositeKey, value] of this.state) {
       const [type, id] = parseKey<keyof TTM & string>(compositeKey);
       visitor(type, id, value);

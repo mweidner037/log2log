@@ -1,6 +1,7 @@
 import { GetState } from "../types/get-state";
 import { BaseTypeToModel, BaseValue } from "../types/model";
 import { BiMap } from "./bi-map";
+import { BiSet } from "./bi-set";
 import { ChangeSet } from "./change-set";
 
 /**
@@ -22,7 +23,7 @@ export class RenderedChangeSet<TTM extends BaseTypeToModel> {
     /**
      * The deleted keys.
      */
-    readonly deletes: BiMap<TTM, true> = new BiMap<TTM, true>()
+    readonly deletes: BiSet<TTM> = new BiSet()
   ) {}
 
   /**
@@ -39,19 +40,19 @@ export class RenderedChangeSet<TTM extends BaseTypeToModel> {
     get(type: keyof TTM, id: string): BaseValue | undefined;
   }): RenderedChangeSet<TTM> {
     const inverseSets = new BiMap<TTM, BaseValue>();
-    const inverseDeletes = new BiMap<TTM, true>();
+    const inverseDeletes = new BiSet();
 
     for (const [type, id] of this.sets.entries()) {
       const beforeValue = beforeState.get(type, id);
       if (beforeValue === undefined) {
         // The value did not exist before, so the inverse deletes it.
-        inverseDeletes.set(type, id, true);
+        inverseDeletes.add(type, id);
       } else {
         inverseSets.set(type, id, beforeValue);
       }
     }
 
-    for (const [type, id] of this.deletes.entries()) {
+    for (const [type, id] of this.deletes.values()) {
       const beforeValue = beforeState.get(type, id);
       if (beforeValue !== undefined) {
         // The value existed before, so the inverse restores it.
@@ -72,7 +73,7 @@ export class RenderedChangeSet<TTM extends BaseTypeToModel> {
       this.set(type, id, value);
     }
 
-    for (const [type, id] of rendered.deletes.entries()) {
+    for (const [type, id] of rendered.deletes.values()) {
       this.delete(type, id);
     }
   }
@@ -110,7 +111,7 @@ export class RenderedChangeSet<TTM extends BaseTypeToModel> {
       );
     }
 
-    for (const [type, id] of changeSet.deletes.entries()) {
+    for (const [type, id] of changeSet.deletes.values()) {
       this.delete(type, id);
     }
   }
@@ -123,7 +124,7 @@ export class RenderedChangeSet<TTM extends BaseTypeToModel> {
 
   /** Records (type, id) as a deletion, clearing any set of it. */
   delete(type: keyof TTM, id: string): void {
-    this.deletes.set(type, id, true);
+    this.deletes.add(type, id);
     this.sets.delete(type, id);
   }
 }

@@ -100,7 +100,7 @@ function changeState<TTM extends BaseTypeToModel>(
   for (const [type, id, value] of rendered.sets.entries()) {
     state.set(type, id, value);
   }
-  for (const [type, id] of rendered.deletes.entries()) {
+  for (const [type, id] of rendered.deletes.values()) {
     state.delete(type, id);
   }
 }

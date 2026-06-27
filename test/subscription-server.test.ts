@@ -39,7 +39,7 @@ function changeSet(
     result.updates.set(update.value.type, update.value.id, update.updates);
   }
   for (const { type, id } of deletes) {
-    result.deletes.set(type, id, true);
+    result.deletes.add(type, id);
   }
   return result;
 }

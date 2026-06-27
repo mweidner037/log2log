@@ -1,11 +1,11 @@
-import { BiMap } from "./data-structures/bi-map";
+import { BiSet } from "./data-structures/bi-set";
 import { ChangeSet } from "./data-structures/change-set";
 import { SubscriptionDelta } from "./data-structures/subscription-delta";
 import { GetState } from "./types/get-state";
 import { BaseTypeToModel } from "./types/model";
 
 export class SubscriptionServer<TTM extends BaseTypeToModel> {
-  private readonly subscriptions = new BiMap<TTM, true>();
+  private readonly subscriptions = new BiSet<TTM>();
 
   constructor(readonly typeToModel: TTM) {}
 
@@ -29,7 +29,7 @@ export class SubscriptionServer<TTM extends BaseTypeToModel> {
   ): ChangeSet<TTM> {
     // Process deleted subscriptions first, so that we skip them in the changeSets.
     if (delta) {
-      for (const [type, id] of delta.deletes.entries()) {
+      for (const [type, id] of delta.deletes.values()) {
         this.subscriptions.delete(type, id);
       }
     }
@@ -46,8 +46,8 @@ export class SubscriptionServer<TTM extends BaseTypeToModel> {
     // Process added subscriptions, also recording their final values as blindSets
     // in the ChangeSet.
     if (delta) {
-      for (const [type, id] of delta.adds.entries()) {
-        this.subscriptions.set(type, id, true);
+      for (const [type, id] of delta.adds.values()) {
+        this.subscriptions.add(type, id);
         const value = state.get(type, id);
         if (value) overallChanges.blindSets.set(type, id, value);
       }
